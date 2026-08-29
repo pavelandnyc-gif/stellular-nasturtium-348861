@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Pavéland · Panel de votación</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FAE6C5">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="assets/img/monograma.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/brand.css">
+
+<style>
+body {
+  background: var(--fondo-degrade);
+  background-attachment: fixed;
+  -webkit-user-select: text;
+  user-select: text;
+  min-height: 100vh;
+}
+
+.envoltura {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: clamp(20px, 4vw, 48px) clamp(16px, 4vw, 32px) 72px;
+}
+
+/* --- Barra superior --------------------------------------------------- */
+.barra {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: clamp(20px, 3vw, 34px);
+}
+.barra img { height: 44px; width: auto; }
+.barra .titulo {
+  font-family: var(--fuente-display);
+  font-weight: 600;
+  font-size: clamp(19px, 2.6vw, 26px);
+  color: var(--marron-logo);
+  line-height: 1.1;
+}
+.barra .titulo small {
+  display: block;
+  font-family: var(--fuente-texto);
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--texto-suave);
+  margin-top: 3px;
+}
+.barra .espacio { flex: 1 1 auto; }
+
+.envivo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .8);
+  border: 1px solid var(--borde);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--texto-suave);
+}
+.envivo .punto {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #2FA36B;
+  box-shadow: 0 0 0 0 rgba(47, 163, 107, .55);
+  animation: latido 2s infinite;
+}
+.envivo.desconectado .punto { background: #C9822F; animation: none; }
+@keyframes latido {
+  0%   { box-shadow: 0 0 0 0 rgba(47,163,107,.5); }
+  70%  { box-shadow: 0 0 0 8px rgba(47,163,107,0); }
+  100% { box-shadow: 0 0 0 0 rgba(47,163,107,0); }
+}
+
+/* --- Botones ---------------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 14.5px;
+  background: var(--marron-logo);
+  color: #fff;
+  box-shadow: var(--sombra-s);
+  transition: transform .16s ease, filter .16s ease, opacity .16s ease;
+}
+.btn:hover { filter: brightness(1.08); }
+.btn:active { transform: scale(.97); }
+.btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.btn.fantasma {
+  background: rgba(255, 255, 255, .82);
+  color: var(--cacao);
+  border: 1px solid var(--borde-fuerte);
+  box-shadow: none;
+}
+.btn.peligro { background: #B23B2E; }
+.btn.pequeno { padding: 9px 16px; font-size: 13px; }
+
+/* --- Tarjetas --------------------------------------------------------- */
+.panel {
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-l);
+  box-shadow: var(--sombra-m);
+  padding: clamp(20px, 3.4vw, 34px);
+  margin-bottom: clamp(18px, 2.6vw, 26px);
+}
+.panel > h2 {
+  margin: 0 0 6px;
+  font-family: var(--fuente-display);
+  font-weight: 600;
+  font-size: 20px;
+  color: var(--cacao-oscuro);
+}
+.panel > .ayuda {
+  margin: 0 0 22px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--texto-suave);
+}
+
+/* --- Total ------------------------------------------------------------ */
+.total {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding-bottom: 22px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--borde);
+}
+.total .cifra {
+  font-family: var(--fuente-display);
+  font-weight: 700;
+  font-size: clamp(40px, 8vw, 68px);
+  line-height: 1;
+  color: var(--marron-logo);
+  font-variant-numeric: tabular-nums;
+}
+.total .etiqueta {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--texto-suave);
+}
+.total .pendientes {
+  font-size: 12.5px;
+  color: #A2681F;
+  background: rgba(232, 173, 114, .28);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-weight: 600;
+}
+
+/* --- Ranking ---------------------------------------------------------- */
+.ranking { display: flex; flex-direction: column; gap: 18px; }
+
+.fila { display: grid; grid-template-columns: 46px 1fr; gap: 14px; align-items: center; }
+.fila .medalla {
+  font-size: 27px;
+  text-align: center;
+  line-height: 1;
+  filter: saturate(1.05);
+}
+.fila.lider .barra-fondo { box-shadow: inset 0 0 0 1px rgba(145, 67, 21, .22); }
+
+.fila .cuerpo { min-width: 0; }
+.fila .linea {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 7px;
+}
+.fila .nombre {
+  font-family: var(--fuente-display);
+  font-weight: 600;
+  font-size: 17.5px;
+  color: var(--cacao-oscuro);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fila .datos {
+  flex: 0 0 auto;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--texto-suave);
+  font-variant-numeric: tabular-nums;
+}
+.fila .datos b {
+  color: var(--marron-logo);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.barra-fondo {
+  height: 15px;
+  border-radius: 999px;
+  background: rgba(232, 173, 114, .26);
+  overflow: hidden;
+}
+.barra-relleno {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--caramelo), var(--marron-logo));
+  width: 0;
+  transition: width .7s var(--curva);
+}
+.fila:nth-child(2) .barra-relleno { background: linear-gradient(90deg, #EFC79A, #A85523); }
+.fila:nth-child(3) .barra-relleno { background: linear-gradient(90deg, #EFD4B4, #9C7250); }
+
+/* --- Editor de postres ------------------------------------------------ */
+.editor { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
+
+.ficha {
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-m);
+  overflow: hidden;
+  background: #FFFDF8;
+}
+.ficha .vista {
+  aspect-ratio: 4 / 3;
+  background: var(--crema);
+  position: relative;
+  overflow: hidden;
+}
+.ficha .vista img { width: 100%; height: 100%; object-fit: cover; }
+.ficha .vista .marca-pos {
+  position: absolute;
+  top: 10px; left: 10px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: rgba(48, 28, 18, .62);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+.ficha .campos { padding: 16px; display: flex; flex-direction: column; gap: 11px; }
+
+label.campo { display: block; }
+label.campo span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--texto-suave);
+}
+input[type="text"], input[type="email"], input[type="password"], input[type="url"] {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--borde-fuerte);
+  border-radius: var(--radio-s);
+  background: #fff;
+  font-family: var(--fuente-texto);
+  font-size: 15px;
+  color: var(--texto);
+  transition: border-color .16s ease, box-shadow .16s ease;
+}
+input:focus {
+  outline: none;
+  border-color: var(--marron-logo);
+  box-shadow: 0 0 0 3px rgba(145, 67, 21, .14);
+}
+input[type="file"] { display: none; }
+
+.acciones-pie {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 24px;
+  padding-top: 22px;
+  border-top: 1px solid var(--borde);
+}
+
+/* --- Zona peligrosa --------------------------------------------------- */
+.panel.zona-riesgo { border-color: rgba(178, 59, 46, .3); background: #FFFCFB; }
+.panel.zona-riesgo > h2 { color: #9A3327; }
+
+/* --- Login ------------------------------------------------------------ */
+.login { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.login-caja {
+  width: 100%;
+  max-width: 400px;
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-l);
+  box-shadow: var(--sombra-l);
+  padding: clamp(28px, 6vw, 40px);
+  text-align: center;
+}
+.login-caja img { height: 90px; width: auto; margin: 0 auto 20px; }
+.login-caja h1 {
+  margin: 0 0 6px;
+  font-family: var(--fuente-display);
+  font-size: 22px;
+  color: var(--marron-logo);
+}
+.login-caja p.ayuda { margin: 0 0 24px; font-size: 13.5px; color: var(--texto-suave); line-height: 1.5; }
+.login-caja form { display: flex; flex-direction: column; gap: 12px; text-align: left; }
+.login-caja .btn { width: 100%; margin-top: 6px; padding: 14px; }
+
+/* --- Diálogo ---------------------------------------------------------- */
+dialog {
+  border: 0;
+  padding: 0;
+  border-radius: var(--radio-l);
+  box-shadow: var(--sombra-xl);
+  max-width: 440px;
+  width: calc(100% - 40px);
+  background: var(--superficie);
+  color: var(--texto);
+}
+dialog::backdrop { background: rgba(48, 28, 18, .5); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+.dlg { padding: 30px; }
+.dlg h3 {
+  margin: 0 0 10px;
+  font-family: var(--fuente-display);
+  font-size: 20px;
+  color: var(--cacao-oscuro);
+}
+.dlg p { margin: 0 0 8px; font-size: 14.5px; line-height: 1.6; color: var(--texto-suave); }
+.dlg .botones { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; flex-wrap: wrap; }
+
+/* --- Mensajes --------------------------------------------------------- */
+.mensaje {
+  margin-top: 14px;
+  padding: 11px 15px;
+  border-radius: var(--radio-s);
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  display: none;
+}
+.mensaje.visible { display: block; }
+.mensaje.ok    { background: #E7F5EC; color: #216B44; }
+.mensaje.error { background: #FBEBE9; color: #9A3327; }
+
+.oculto { display: none !important; }
+
+@media (max-width: 560px) {
+  .fila { grid-template-columns: 34px 1fr; gap: 10px; }
+  .fila .medalla { font-size: 22px; }
+  .fila .nombre { font-size: 15.5px; }
+}
+</style>
+</head>
+
+<body>
+
+<!-- ====================== PANTALLA DE ACCESO ====================== -->
+<div class="login" id="vistaLogin">
+  <div class="login-caja">
+    <img src="assets/img/logo-paveland.png" alt="Pavéland">
+    <h1>Panel de votación</h1>
+    <p class="ayuda">Acceso solo para el equipo de Pavéland.</p>
+    <form id="formLogin">
+      <label class="campo">
+        <span>Correo</span>
+        <input type="email" id="email" autocomplete="username" required>
+      </label>
+      <label class="campo">
+        <span>Contraseña</span>
+        <input type="password" id="password" autocomplete="current-password" required>
+      </label>
+      <button class="btn" type="submit" id="btnEntrar">Entrar</button>
+    </form>
+    <div class="mensaje error" id="msgLogin"></div>
+  </div>
+</div>
+
+<!-- ====================== PANEL ====================== -->
+<div class="envoltura oculto" id="vistaPanel">
+
+  <div class="barra">
+    <img src="assets/img/monograma.png" alt="">
+    <div class="titulo">
+      Panel de votación
+      <small id="tituloCampana">Postre del Mes</small>
+    </div>
+    <div class="espacio"></div>
+    <div class="envivo" id="envivo"><span class="punto"></span><span id="envivoTexto">En vivo</span></div>
+    <button class="btn fantasma pequeno" id="btnVer">Ver pantalla</button>
+    <button class="btn fantasma pequeno" id="btnSalir">Salir</button>
+  </div>
+
+  <!-- Resultados -->
+  <section class="panel">
+    <div class="total">
+      <span class="cifra" id="totalVotos">0</span>
+      <span class="etiqueta">votos totales</span>
+      <span class="espacio" style="flex:1"></span>
+      <span class="pendientes oculto" id="pendientes"></span>
+    </div>
+    <div class="ranking" id="ranking"></div>
+  </section>
+
+  <!-- Editor -->
+  <section class="panel">
+    <h2>Los tres postres</h2>
+    <p class="ayuda">
+      Cambia el nombre y la foto de cada opción. Los cambios aparecen en el iPad
+      en menos de dos minutos, o al instante si recargas la pantalla de votación.
+      Para la foto, lo ideal es una imagen cuadrada o 4:3, de al menos 1200 px.
+    </p>
+    <div class="editor" id="editor"></div>
+    <div class="acciones-pie">
+      <button class="btn" id="btnGuardar">Guardar cambios</button>
+      <button class="btn fantasma" id="btnRecargar">Descartar</button>
+    </div>
+    <div class="mensaje" id="msgEditor"></div>
+  </section>
+
+  <!-- Zona peligrosa -->
+  <section class="panel zona-riesgo">
+    <h2>Empezar de nuevo</h2>
+    <p class="ayuda">
+      <b>Resetear</b> pone los tres contadores en cero y conserva los nombres y las fotos.<br>
+      <b>Nueva campaña</b> archiva la votación actual con sus resultados y abre una limpia.
+    </p>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <button class="btn peligro" id="btnReset">Resetear votos</button>
+      <button class="btn fantasma" id="btnNueva">Iniciar nueva campaña</button>
+    </div>
+    <div class="mensaje" id="msgRiesgo"></div>
+  </section>
+
+</div>
+
+<!-- Confirmar reset -->
+<dialog id="dlgReset">
+  <div class="dlg">
+    <h3>¿Estás seguro?</h3>
+    <p>Esta acción pondrá <b>todos los votos en cero</b>.</p>
+    <p id="dlgResetDetalle"></p>
+    <p>No se puede deshacer.</p>
+    <div class="botones">
+      <button class="btn fantasma" id="dlgResetNo">Cancelar</button>
+      <button class="btn peligro" id="dlgResetSi">Sí, poner en cero</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Nueva campaña -->
+<dialog id="dlgNueva">
+  <div class="dlg">
+    <h3>Iniciar nueva campaña</h3>
+    <p>
+      La votación actual se archiva con sus resultados y se abre una nueva
+      con tres postres en cero. Escribe los nombres nuevos:
+    </p>
+    <div style="display:flex;flex-direction:column;gap:11px;margin-top:16px">
+      <label class="campo"><span>Título de la campaña</span><input type="text" id="nvTitulo" value="Postre del Mes"></label>
+      <label class="campo"><span>Postre 1</span><input type="text" id="nv1" value="Postre #1"></label>
+      <label class="campo"><span>Postre 2</span><input type="text" id="nv2" value="Postre #2"></label>
+      <label class="campo"><span>Postre 3</span><input type="text" id="nv3" value="Postre #3"></label>
+    </div>
+    <div class="botones">
+      <button class="btn fantasma" id="dlgNuevaNo">Cancelar</button>
+      <button class="btn" id="dlgNuevaSi">Crear campaña</button>
+    </div>
+  </div>
+</dialog>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="assets/js/config.js"></script>
+<script src="assets/js/data.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var PV = window.PV;
+  var db = PV.db;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var vistaLogin = $('vistaLogin');
+  var vistaPanel = $('vistaPanel');
+
+  var campanaActual = null;
+  var postres = [];
+  var desuscribir = null;
+  var subidasPendientes = {};   // position -> File
+
+  /* --------------------------------------------------------------------- */
+  function mensaje(el, texto, tipo) {
+    el.textContent = texto;
+    el.className = 'mensaje visible ' + (tipo || 'ok');
+    if (tipo === 'ok') setTimeout(function () { el.classList.remove('visible'); }, 4500);
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  if (!PV.listo) {
+    document.body.innerHTML =
+      '<div class="login"><div class="login-caja">' +
+      '<img src="assets/img/logo-paveland.png" alt="Pavéland">' +
+      '<h1>Falta conectar Supabase</h1>' +
+      '<p class="ayuda">Pega tu <b>Project URL</b> y tu <b>anon key</b> en ' +
+      '<code>assets/js/config.js</code> y vuelve a cargar.</p></div></div>';
+    return;
+  }
+
+  /* ===================== ACCESO ===================== */
+
+  $('formLogin').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var btn = $('btnEntrar');
+    btn.disabled = true;
+    btn.textContent = 'Entrando…';
+
+    db.auth.signInWithPassword({
+      email: $('email').value.trim(),
+      password: $('password').value,
+    }).then(function (r) {
+      btn.disabled = false;
+      btn.textContent = 'Entrar';
+      if (r.error) {
+        mensaje($('msgLogin'), 'Correo o contraseña incorrectos.', 'error');
+        return;
+      }
+      abrirPanel();
+    });
+  });
+
+  $('btnSalir').addEventListener('click', function () {
+    db.auth.signOut().then(function () { location.reload(); });
+  });
+
+  $('btnVer').addEventListener('click', function () { window.open('index.html', '_blank'); });
+
+  db.auth.getSession().then(function (r) {
+    if (r.data && r.data.session) abrirPanel();
+  });
+
+  function abrirPanel() {
+    vistaLogin.classList.add('oculto');
+    vistaPanel.classList.remove('oculto');
+    cargar(true);
+  }
+
+  /* ===================== DATOS ===================== */
+
+  function cargar(primeraVez) {
+    return PV.cargarCampana().then(function (data) {
+      campanaActual = data.campana;
+      postres = data.postres;
+      $('tituloCampana').textContent = campanaActual.title || 'Postre del Mes';
+      pintarRanking();
+      if (primeraVez) pintarEditor();
+      actualizarPendientes();
+
+      if (primeraVez) {
+        if (desuscribir) desuscribir();
+        desuscribir = PV.suscribirse(campanaActual.id, function () { refrescarConteos(); });
+        marcarEnVivo(true);
+      }
+    }).catch(function (err) {
+      if (err && err.message === 'SIN_CAMPANA') {
+        mensaje($('msgRiesgo'), 'No hay campaña activa. Pulsa "Iniciar nueva campaña".', 'error');
+      } else {
+        marcarEnVivo(false);
+      }
+    });
+  }
+
+  function refrescarConteos() {
+    if (!campanaActual) return;
+    db.from('desserts')
+      .select('id,position,name,image_url,votes')
+      .eq('campaign_id', campanaActual.id)
+      .order('position', { ascending: true })
+      .then(function (r) {
+        if (r.error) { marcarEnVivo(false); return; }
+        marcarEnVivo(true);
+        (r.data || []).forEach(function (d) {
+          var p = postres.filter(function (x) { return x.id === d.id; })[0];
+          if (p) { p.votes = d.votes; p.name = d.name; }
+        });
+        pintarRanking();
+        actualizarPendientes();
+      });
+  }
+
+  function marcarEnVivo(ok) {
+    $('envivo').classList.toggle('desconectado', !ok);
+    $('envivoTexto').textContent = ok ? 'En vivo' : 'Reconectando';
+  }
+
+  function actualizarPendientes() {
+    var n = PV.pendientes();
+    var el = $('pendientes');
+    el.classList.toggle('oculto', n === 0);
+    if (n) el.textContent = n + (n === 1 ? ' voto en cola de envío' : ' votos en cola de envío');
+  }
+
+  /* ===================== RANKING ===================== */
+
+  var MEDALLAS = ['🥇', '🥈', '🥉'];
+
+  function pintarRanking() {
+    var total = postres.reduce(function (a, p) { return a + p.votes; }, 0);
+    $('totalVotos').textContent = total.toLocaleString('es-MX');
+
+    var orden = postres.slice().sort(function (a, b) {
+      return b.votes - a.votes || a.position - b.position;
+    });
+    var maximo = orden.length ? orden[0].votes : 0;
+
+    $('ranking').innerHTML = orden.map(function (p, i) {
+      var pct = total > 0 ? (p.votes / total) * 100 : 0;
+      var ancho = maximo > 0 ? (p.votes / maximo) * 100 : 0;
+      var lider = i === 0 && p.votes > 0 && (orden.length < 2 || p.votes > orden[1].votes);
+      return '' +
+        '<div class="fila' + (lider ? ' lider' : '') + '">' +
+          '<div class="medalla">' + MEDALLAS[i] + '</div>' +
+          '<div class="cuerpo">' +
+            '<div class="linea">' +
+              '<span class="nombre">' + (i + 1) + '. ' + esc(p.name) + '</span>' +
+              '<span class="datos"><b>' + p.votes.toLocaleString('es-MX') + '</b> votos · ' +
+                pct.toFixed(pct > 0 && pct < 1 ? 1 : 0) + '%</span>' +
+            '</div>' +
+            '<div class="barra-fondo"><div class="barra-relleno" style="width:' + ancho.toFixed(2) + '%"></div></div>' +
+          '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  /* ===================== EDITOR ===================== */
+
+  function pintarEditor() {
+    subidasPendientes = {};
+    $('editor').innerHTML = postres.map(function (p) {
+      return '' +
+        '<div class="ficha" data-pos="' + p.position + '">' +
+          '<div class="vista">' +
+            '<span class="marca-pos">Postre ' + p.position + '</span>' +
+            '<img id="prev' + p.position + '" src="' + esc(p.src) + '" alt="">' +
+          '</div>' +
+          '<div class="campos">' +
+            '<label class="campo"><span>Nombre</span>' +
+              '<input type="text" id="nom' + p.position + '" value="' + esc(p.name) + '" maxlength="60"></label>' +
+            '<label class="campo"><span>URL de la foto (opcional)</span>' +
+              '<input type="url" id="url' + p.position + '" value="' + esc(p.image_url) + '" placeholder="https://…"></label>' +
+            '<input type="file" id="file' + p.position + '" accept="image/*">' +
+            '<button class="btn fantasma pequeno" data-subir="' + p.position + '" type="button">Subir foto desde el dispositivo</button>' +
+          '</div>' +
+        '</div>';
+    }).join('');
+
+    Array.prototype.forEach.call($('editor').querySelectorAll('[data-subir]'), function (btn) {
+      var pos = btn.getAttribute('data-subir');
+      var input = $('file' + pos);
+      btn.addEventListener('click', function () { input.click(); });
+      input.addEventListener('change', function () {
+        var f = input.files && input.files[0];
+        if (!f) return;
+        if (f.size > 8 * 1024 * 1024) {
+          mensaje($('msgEditor'), 'Esa imagen pesa más de 8 MB. Usa una más ligera.', 'error');
+          input.value = '';
+          return;
+        }
+        subidasPendientes[pos] = f;
+        $('prev' + pos).src = URL.createObjectURL(f);
+        btn.textContent = '✓ ' + f.name.slice(0, 22);
+        mensaje($('msgEditor'), 'Foto lista. Pulsa "Guardar cambios" para publicarla.', 'ok');
+      });
+    });
+
+    postres.forEach(function (p) {
+      $('url' + p.position).addEventListener('change', function () {
+        var v = this.value.trim();
+        $('prev' + p.position).src = v || PV.placeholder(p.position);
+        delete subidasPendientes[String(p.position)];
+      });
+    });
+  }
+
+  $('btnRecargar').addEventListener('click', function () {
+    cargar(false).then(pintarEditor);
+  });
+
+  $('btnGuardar').addEventListener('click', function () {
+    var btn = $('btnGuardar');
+    btn.disabled = true;
+    btn.textContent = 'Guardando…';
+
+    // 1) Subir las fotos nuevas a Supabase Storage.
+    var subidas = Object.keys(subidasPendientes).map(function (pos) {
+      var file = subidasPendientes[pos];
+      var ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
+      var ruta = campanaActual.id + '/postre-' + pos + '-' + Date.now() + '.' + ext;
+
+      return db.storage.from('dessert-images')
+        .upload(ruta, file, { cacheControl: '31536000', upsert: true })
+        .then(function (r) {
+          if (r.error) throw r.error;
+          var pub = db.storage.from('dessert-images').getPublicUrl(ruta);
+          return { pos: pos, url: pub.data.publicUrl };
+        });
+    });
+
+    Promise.all(subidas).then(function (resultados) {
+      resultados.forEach(function (r) { $('url' + r.pos).value = r.url; });
+
+      // 2) Guardar nombres y URLs.
+      return Promise.all(postres.map(function (p) {
+        return db.from('desserts').update({
+          name: ($('nom' + p.position).value || '').trim() || ('Postre #' + p.position),
+          image_url: ($('url' + p.position).value || '').trim() || null,
+          updated_at: new Date().toISOString(),
+        }).eq('id', p.id).then(function (r) {
+          if (r.error) throw r.error;
+        });
+      }));
+    }).then(function () {
+      subidasPendientes = {};
+      btn.disabled = false;
+      btn.textContent = 'Guardar cambios';
+      mensaje($('msgEditor'), 'Listo. Los tres postres quedaron actualizados.', 'ok');
+      return cargar(false).then(pintarEditor);
+    }).catch(function (err) {
+      btn.disabled = false;
+      btn.textContent = 'Guardar cambios';
+      mensaje($('msgEditor'), 'No se pudo guardar: ' + ((err && err.message) || 'error desconocido'), 'error');
+    });
+  });
+
+  /* ===================== RESET ===================== */
+
+  var dlgReset = $('dlgReset');
+
+  $('btnReset').addEventListener('click', function () {
+    var total = postres.reduce(function (a, p) { return a + p.votes; }, 0);
+    $('dlgResetDetalle').textContent =
+      'Se borrarán los ' + total.toLocaleString('es-MX') + ' votos de "' +
+      (campanaActual ? campanaActual.title : '') + '".';
+    dlgReset.showModal();
+  });
+
+  $('dlgResetNo').addEventListener('click', function () { dlgReset.close(); });
+
+  $('dlgResetSi').addEventListener('click', function () {
+    var btn = $('dlgResetSi');
+    btn.disabled = true;
+    btn.textContent = 'Poniendo en cero…';
+
+    db.rpc('reset_votes', { p_campaign_id: campanaActual.id }).then(function (r) {
+      btn.disabled = false;
+      btn.textContent = 'Sí, poner en cero';
+      dlgReset.close();
+      if (r.error) { mensaje($('msgRiesgo'), 'No se pudo resetear: ' + r.error.message, 'error'); return; }
+      mensaje($('msgRiesgo'), 'Votos en cero. La votación empieza de nuevo.', 'ok');
+      cargar(false);
+    });
+  });
+
+  /* ===================== NUEVA CAMPAÑA ===================== */
+
+  var dlgNueva = $('dlgNueva');
+
+  $('btnNueva').addEventListener('click', function () { dlgNueva.showModal(); });
+  $('dlgNuevaNo').addEventListener('click', function () { dlgNueva.close(); });
+
+  $('dlgNuevaSi').addEventListener('click', function () {
+    var btn = $('dlgNuevaSi');
+    btn.disabled = true;
+    btn.textContent = 'Creando…';
+
+    db.rpc('start_new_campaign', {
+      p_title: $('nvTitulo').value.trim(),
+      p_name1: $('nv1').value.trim(),
+      p_name2: $('nv2').value.trim(),
+      p_name3: $('nv3').value.trim(),
+    }).then(function (r) {
+      btn.disabled = false;
+      btn.textContent = 'Crear campaña';
+      dlgNueva.close();
+      if (r.error) { mensaje($('msgRiesgo'), 'No se pudo crear: ' + r.error.message, 'error'); return; }
+      mensaje($('msgRiesgo'), 'Campaña nueva creada. Sube las fotos de los tres postres.', 'ok');
+      if (desuscribir) { desuscribir(); desuscribir = null; }
+      cargar(true);
+    });
+  });
+
+  /* ===================== LIMPIEZA ===================== */
+
+  window.addEventListener('beforeunload', function () { if (desuscribir) desuscribir(); });
+  setInterval(actualizarPendientes, 5000);
+})();
+</script>
+</body>
+</html>

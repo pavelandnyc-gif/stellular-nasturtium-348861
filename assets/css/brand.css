@@ -1,0 +1,100 @@
+/* ==========================================================================
+   PAVÉLAND · Sistema de marca
+   Paleta y tipografía tomadas del Manual de Marca Pavéland.
+   Pantone 7584 C / 721 C / 7499 C / 7586 C
+   ========================================================================== */
+
+:root {
+  /* --- Paleta cromática oficial --- */
+  --crema:        #FAE6C5;   /* Pantone 7584 C */
+  --caramelo:     #E8AD72;   /* Pantone 721 C  */
+  --marron:       #9C532C;   /* Pantone 7499 C */
+  --cacao:        #744423;   /* Pantone 7586 C */
+
+  /* --- Tonos derivados del logotipo (muestreados del arte original) --- */
+  --marron-logo:  #914315;
+  --cacao-oscuro: #3E2113;
+  --tinta:        #301C12;
+  --vainilla:     #FDEDC2;
+  --dorado:       #FCD389;
+  --coral:        #EF8052;   /* acento: los cachetes del isotipo */
+
+  /* --- Roles semánticos --- */
+  --fondo:          #FFF9EE;
+  --fondo-degrade:  radial-gradient(120% 90% at 50% -10%, #FFFDF7 0%, var(--crema) 58%, #F2D6AC 100%);
+  --superficie:     #FFFFFF;
+  --texto:          var(--tinta);
+  --texto-suave:    #7B5A3E;
+  --borde:          rgba(116, 68, 35, .14);
+  --borde-fuerte:   rgba(116, 68, 35, .28);
+
+  --sombra-s:  0 2px 8px rgba(62, 33, 19, .07);
+  --sombra-m:  0 10px 30px -10px rgba(62, 33, 19, .22);
+  --sombra-l:  0 26px 60px -18px rgba(62, 33, 19, .34);
+  --sombra-xl: 0 40px 90px -24px rgba(62, 33, 19, .45);
+
+  --radio-s:  14px;
+  --radio-m:  22px;
+  --radio-l:  30px;
+  --radio-xl: 38px;
+
+  /* Caooli es la tipografía display de la marca; no está en Google Fonts, así
+     que Fredoka actúa como sustituto redondeado del mismo carácter.
+     Si instalas Caooli como webfont, se usará automáticamente. */
+  --fuente-display: 'Caooli', 'Fredoka', 'Baloo 2', 'Montserrat', system-ui, sans-serif;
+  --fuente-texto:   'Montserrat', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --curva: cubic-bezier(.34, 1.4, .48, 1);
+}
+
+/* --------------------------------------------------------------------------
+   Base
+   -------------------------------------------------------------------------- */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--fondo);
+  color: var(--texto);
+  font-family: var(--fuente-texto);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  /* Kiosco: nada de selección, zoom por doble toque, ni resaltado azul. */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+}
+
+img { max-width: 100%; display: block; }
+
+button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+:focus-visible {
+  outline: 3px solid var(--marron);
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

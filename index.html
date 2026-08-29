@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Pavéland · You Pick The Next One</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FAE6C5">
+<meta name="robots" content="noindex">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Pavéland">
+<link rel="apple-touch-icon" href="assets/img/monograma.png">
+<link rel="icon" href="assets/img/monograma.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/brand.css">
+
+<style>
+/* ==========================================================================
+   Pantalla de votación · pensada primero para iPad horizontal
+   ========================================================================== */
+
+body { background: var(--fondo-degrade); background-attachment: fixed; }
+
+.pantalla {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding:
+    calc(env(safe-area-inset-top) + clamp(14px, 2.4vh, 30px))
+    calc(env(safe-area-inset-right) + clamp(16px, 3vw, 46px))
+    calc(env(safe-area-inset-bottom) + clamp(14px, 2.4vh, 30px))
+    calc(env(safe-area-inset-left) + clamp(16px, 3vw, 46px));
+  gap: clamp(12px, 2.2vh, 26px);
+}
+
+/* --- Encabezado ------------------------------------------------------- */
+
+.cabecera { text-align: center; flex: 0 0 auto; }
+
+.marca {
+  display: inline-block;
+  margin: 0 auto clamp(6px, 1.2vh, 14px);
+  background: none;
+  padding: 0;
+}
+.marca img {
+  height: clamp(46px, 8.5vh, 92px);
+  width: auto;
+  margin: 0 auto;
+  filter: drop-shadow(0 6px 14px rgba(116, 68, 35, .18));
+  pointer-events: none;
+}
+
+h1 {
+  margin: 0;
+  font-family: var(--fuente-display);
+  font-weight: 700;
+  font-size: clamp(26px, 4.6vh, 58px);
+  line-height: 1.02;
+  letter-spacing: .012em;
+  color: var(--marron-logo);
+  text-transform: uppercase;
+  text-wrap: balance;
+}
+
+.subtitulo {
+  margin: clamp(5px, 1vh, 12px) auto 0;
+  max-width: 30ch;
+  font-size: clamp(13px, 1.95vh, 21px);
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--cacao);
+  text-wrap: balance;
+}
+.subtitulo b { color: var(--marron-logo); font-weight: 700; }
+
+/* --- Las tres tarjetas ------------------------------------------------- */
+
+.opciones {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: clamp(14px, 2.4vw, 34px);
+  align-content: start;
+}
+
+.tarjeta {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-xl);
+  box-shadow: var(--sombra-m);
+  overflow: hidden;
+  text-align: left;
+  transform: translateZ(0);
+  transition: transform .34s var(--curva), box-shadow .34s ease, opacity .34s ease;
+  will-change: transform;
+}
+
+.tarjeta::after {                       /* anillo de selección */
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 4px solid var(--marron-logo);
+  opacity: 0;
+  transform: scale(.98);
+  transition: opacity .3s ease, transform .3s var(--curva);
+  pointer-events: none;
+}
+
+.tarjeta .foto {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  background: var(--crema);
+  overflow: hidden;
+}
+/* La foto se posiciona en absoluto: así el tamaño del hueco lo manda SIEMPRE
+   el CSS y nunca las proporciones del archivo que suba el negocio. Una foto
+   panorámica y una vertical ocupan exactamente el mismo espacio. */
+.tarjeta .foto img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;              /* recorta, nunca deforma */
+  object-position: center;
+  transition: transform .5s var(--curva);
+}
+.tarjeta .foto::after {           /* degradado inferior para que el nombre respire */
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 34%;
+  background: linear-gradient(to top, rgba(48, 28, 18, .30), transparent);
+  pointer-events: none;
+}
+
+/* La placa tiene ALTURA FIJA (no depende del largo del nombre). Así las tres
+   fotos miden exactamente lo mismo aunque un postre tenga nombre largo, y las
+   tres tarjetas quedan alineadas al milímetro. */
+.tarjeta .placa {
+  flex: 0 0 auto;
+  height: clamp(58px, 9.6vh, 106px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px clamp(10px, 1.4vw, 20px);
+  background: var(--superficie);
+  overflow: hidden;
+}
+.tarjeta .nombre {
+  display: block;
+  width: 100%;
+  font-family: var(--fuente-display);
+  font-weight: 600;
+  font-size: clamp(16px, 2.6vh, 31px);
+  line-height: 1.14;
+  color: var(--cacao-oscuro);
+  text-align: center;
+  overflow-wrap: break-word;
+  text-wrap: balance;
+}
+
+/* Presionada: se hunde un poco. Feedback inmediato al dedo. */
+.tarjeta.presionada { transform: scale(.972); box-shadow: var(--sombra-s); }
+
+/* Elegida: crece, se ilumina y aparece la palomita. */
+.tarjeta.elegida {
+  transform: scale(1.035);
+  box-shadow: var(--sombra-xl), 0 0 0 10px rgba(145, 67, 21, .12);
+  z-index: 3;
+}
+.tarjeta.elegida::after { opacity: 1; transform: scale(1); }
+.tarjeta.elegida .foto img { transform: scale(1.05); }
+
+/* Las otras dos se apagan discretamente. */
+.opciones.decidido .tarjeta:not(.elegida) { opacity: .32; transform: scale(.955); }
+
+.palomita {
+  position: absolute;
+  top: clamp(12px, 2vh, 22px);
+  right: clamp(12px, 2vh, 22px);
+  width: clamp(42px, 6.4vh, 68px);
+  height: clamp(42px, 6.4vh, 68px);
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--marron-logo);
+  color: #fff;
+  box-shadow: 0 8px 22px rgba(62, 33, 19, .42);
+  opacity: 0;
+  transform: scale(.4);
+  transition: opacity .26s ease, transform .42s var(--curva);
+  pointer-events: none;
+  z-index: 4;
+}
+.tarjeta.elegida .palomita { opacity: 1; transform: scale(1); }
+.palomita svg { width: 56%; height: 56%; }
+.palomita svg path {
+  stroke-dasharray: 34;
+  stroke-dashoffset: 34;
+  animation: trazo .42s .13s ease forwards;
+}
+.tarjeta:not(.elegida) .palomita svg path { animation: none; }
+@keyframes trazo { to { stroke-dashoffset: 0; } }
+
+/* Aviso de "espera un momento" mientras está bloqueado */
+.opciones.bloqueada { pointer-events: none; }
+
+/* --- Pie -------------------------------------------------------------- */
+
+.pie {
+  flex: 0 0 auto;
+  text-align: center;
+  font-size: clamp(10px, 1.4vh, 14px);
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: rgba(116, 68, 35, .45);
+}
+
+/* --------------------------------------------------------------------------
+   iPad horizontal y cualquier pantalla apaisada: TODO en una sola vista,
+   los tres postres en una sola fila, sin scroll.
+   -------------------------------------------------------------------------- */
+@media (min-aspect-ratio: 5/4) {
+  html, body { overflow: hidden; height: 100%; }
+  .pantalla { height: 100vh; height: 100dvh; }
+  .opciones {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-content: stretch;
+  }
+}
+
+/* Apilado (iPad vertical, iPhone, Android vertical).
+   La foto lleva proporción fija, así las tres tarjetas vuelven a medir
+   exactamente lo mismo aunque las fotos originales sean muy distintas. */
+@media (max-aspect-ratio: 5/4) {
+  .tarjeta .foto {
+    flex: 0 0 auto;
+    aspect-ratio: 4 / 3;
+    max-height: 32vh;             /* evita tarjetas gigantes en pantallas altas */
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Capa de agradecimiento
+   -------------------------------------------------------------------------- */
+
+.gracias {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 6vmin;
+  background: rgba(255, 249, 238, .90);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .38s ease, visibility .38s;
+}
+.gracias.visible { opacity: 1; visibility: visible; }
+
+.gracias-caja {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+  transform: translateY(18px) scale(.94);
+  transition: transform .52s var(--curva);
+}
+.gracias.visible .gracias-caja { transform: none; }
+
+.gracias-sello {
+  width: clamp(78px, 13vh, 132px);
+  height: clamp(78px, 13vh, 132px);
+  margin: 0 auto clamp(14px, 2.4vh, 26px);
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: linear-gradient(150deg, var(--marron-logo), var(--cacao));
+  box-shadow: 0 20px 44px -12px rgba(116, 68, 35, .58);
+  color: #fff;
+}
+.gracias-sello svg { width: 54%; height: 54%; }
+.gracias.visible .gracias-sello svg path {
+  stroke-dasharray: 34; stroke-dashoffset: 34;
+  animation: trazo .5s .18s ease forwards;
+}
+
+.gracias h2 {
+  margin: 0;
+  font-family: var(--fuente-display);
+  font-weight: 700;
+  font-size: clamp(30px, 6.4vh, 74px);
+  line-height: 1.04;
+  color: var(--marron-logo);
+}
+.gracias p {
+  margin: clamp(8px, 1.6vh, 16px) auto 0;
+  max-width: 26ch;
+  font-size: clamp(14px, 2.2vh, 24px);
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--cacao);
+  text-wrap: balance;
+}
+.gracias .elegido {
+  display: inline-block;
+  margin-top: clamp(12px, 2vh, 22px);
+  padding: .5em 1.2em;
+  border-radius: 999px;
+  background: rgba(232, 173, 114, .32);
+  border: 1px solid rgba(116, 68, 35, .18);
+  font-family: var(--fuente-display);
+  font-weight: 600;
+  font-size: clamp(13px, 1.9vh, 20px);
+  color: var(--cacao);
+}
+
+#confeti {
+  position: fixed;
+  inset: 0;
+  z-index: 61;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .5s ease;
+}
+#confeti.visible { opacity: 1; }
+
+/* --------------------------------------------------------------------------
+   Pantalla de configuración pendiente / error
+   -------------------------------------------------------------------------- */
+
+.aviso {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: none;
+  place-items: center;
+  padding: 6vmin;
+  background: var(--fondo-degrade);
+  overflow: auto;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.aviso.visible { display: grid; }
+.aviso-caja {
+  max-width: 620px;
+  padding: clamp(26px, 5vw, 46px);
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-l);
+  box-shadow: var(--sombra-l);
+}
+.aviso-caja img { height: 64px; width: auto; margin-bottom: 20px; }
+.aviso-caja h2 {
+  margin: 0 0 12px;
+  font-family: var(--fuente-display);
+  font-size: 26px;
+  color: var(--marron-logo);
+}
+.aviso-caja p { margin: 0 0 14px; line-height: 1.6; color: var(--texto-suave); font-size: 15px; }
+.aviso-caja ol { margin: 0; padding-left: 20px; line-height: 1.9; color: var(--texto); font-size: 15px; }
+.aviso-caja code {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: .88em;
+  background: var(--crema);
+  border-radius: 6px;
+  padding: .16em .45em;
+}
+
+/* Estado inicial mientras carga */
+.cargando .opciones { opacity: 0; }
+.opciones { transition: opacity .4s ease; }
+</style>
+</head>
+
+<body>
+
+<main class="pantalla cargando" id="pantalla">
+
+  <header class="cabecera">
+    <!-- Mantén el dedo 2.5 s sobre el logo para abrir el panel de administración -->
+    <button class="marca" id="marca" aria-label="Pavéland">
+      <img src="assets/img/logo-paveland.png" alt="Pavéland">
+    </button>
+    <h1>You Pick The Next One</h1>
+    <p class="subtitulo">
+      ¿Cuál quieres que sea nuestro próximo <b>Postre del Mes</b>?<br>
+      Toca tu favorito — <b>solo uno</b>.
+    </p>
+  </header>
+
+  <section class="opciones" id="opciones" aria-label="Elige un postre"></section>
+
+  <footer class="pie">Un toque · Un voto</footer>
+
+</main>
+
+<!-- Confirmación -->
+<div class="gracias" id="gracias" role="status" aria-live="polite">
+  <div class="gracias-caja">
+    <div class="gracias-sello">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4.5 12.5 L9.5 17.5 L19.5 6.5"/>
+      </svg>
+    </div>
+    <h2>¡Voto registrado! 🎉</h2>
+    <p>Gracias por ayudarnos a escoger el próximo Postre del Mes.</p>
+    <div class="elegido" id="graciasElegido" hidden></div>
+  </div>
+</div>
+<canvas id="confeti" aria-hidden="true"></canvas>
+
+<!-- Configuración pendiente -->
+<div class="aviso" id="aviso">
+  <div class="aviso-caja">
+    <img src="assets/img/logotipo.png" alt="Pavéland">
+    <h2 id="avisoTitulo">Falta conectar la base de datos</h2>
+    <div id="avisoCuerpo">
+      <p>La aplicación está lista, solo necesita las llaves de Supabase (2 minutos):</p>
+      <ol>
+        <li>Crea un proyecto gratis en <b>supabase.com</b>.</li>
+        <li>Abre <b>SQL Editor</b> y ejecuta el archivo <code>supabase/schema.sql</code>.</li>
+        <li>Ve a <b>Project Settings → API</b> y copia el <code>Project URL</code> y la <code>anon key</code>.</li>
+        <li>Pégalos en <code>assets/js/config.js</code> y vuelve a cargar esta página.</li>
+      </ol>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="assets/js/config.js"></script>
+<script src="assets/js/data.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var CFG        = window.PAVELAND_CONFIG;
+  var pantalla   = document.getElementById('pantalla');
+  var contenedor = document.getElementById('opciones');
+  var gracias    = document.getElementById('gracias');
+  var elegidoTag = document.getElementById('graciasElegido');
+  var aviso      = document.getElementById('aviso');
+  var lienzo     = document.getElementById('confeti');
+
+  var bloqueado = true;      // arranca bloqueado hasta que se pinten los postres
+  var temporizadores = [];
+
+  function limpiarTemporizadores() {
+    temporizadores.forEach(clearTimeout);
+    temporizadores = [];
+  }
+  function luego(ms, fn) { temporizadores.push(setTimeout(fn, ms)); }
+
+  function mostrarAviso(titulo, html) {
+    document.getElementById('avisoTitulo').textContent = titulo;
+    if (html) document.getElementById('avisoCuerpo').innerHTML = html;
+    aviso.classList.add('visible');
+  }
+
+  /* ---------------------------------------------------------------------
+     Pintar las tres tarjetas
+     --------------------------------------------------------------------- */
+
+  function pintar(postres) {
+    contenedor.innerHTML = '';
+
+    postres.forEach(function (p) {
+      var card = document.createElement('button');
+      card.className = 'tarjeta';
+      card.type = 'button';
+      card.dataset.id = p.id;
+      card.dataset.nombre = p.name;
+      card.setAttribute('aria-label', 'Votar por ' + p.name);
+
+      var foto = document.createElement('div');
+      foto.className = 'foto';
+
+      var img = document.createElement('img');
+      img.src = p.src;
+      img.alt = p.name;
+      img.draggable = false;
+      // Si la URL guardada se rompe, cae al placeholder de la marca.
+      img.onerror = function () { img.onerror = null; img.src = window.PV.placeholder(p.position); };
+      foto.appendChild(img);
+
+      var check = document.createElement('span');
+      check.className = 'palomita';
+      check.innerHTML =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" ' +
+        'stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5 L9.5 17.5 L19.5 6.5"/></svg>';
+
+      var placa = document.createElement('div');
+      placa.className = 'placa';
+      var nombre = document.createElement('span');
+      nombre.className = 'nombre';
+      nombre.textContent = p.name;
+      placa.appendChild(nombre);
+
+      card.appendChild(foto);
+      card.appendChild(check);
+      card.appendChild(placa);
+      contenedor.appendChild(card);
+    });
+
+    pantalla.classList.remove('cargando');
+    ajustarNombres();
+    desbloquear();
+  }
+
+  /* Reduce la letra de un nombre largo hasta que quepa en su placa, en vez de
+     dejar que la placa crezca y le robe altura a la foto. Las tres tarjetas
+     conservan así proporciones idénticas. */
+  function ajustarNombres() {
+    Array.prototype.forEach.call(contenedor.querySelectorAll('.nombre'), function (el) {
+      var placa = el.parentElement;
+      el.style.fontSize = '';
+      var tam = parseFloat(getComputedStyle(el).fontSize) || 20;
+      var minimo = 11;
+      var vueltas = 0;
+      while (placa.scrollHeight > placa.clientHeight && tam > minimo && vueltas < 40) {
+        tam -= 1;
+        el.style.fontSize = tam + 'px';
+        vueltas++;
+      }
+    });
+  }
+
+  var reajuste;
+  function reajustar() {
+    clearTimeout(reajuste);
+    reajuste = setTimeout(ajustarNombres, 150);
+  }
+  window.addEventListener('resize', reajustar);
+  window.addEventListener('orientationchange', reajustar);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(ajustarNombres);
+
+  function desbloquear() {
+    bloqueado = false;
+    contenedor.classList.remove('bloqueada', 'decidido');
+    Array.prototype.forEach.call(
+      contenedor.querySelectorAll('.tarjeta'),
+      function (c) { c.classList.remove('elegida', 'presionada'); }
+    );
+  }
+
+  /* ---------------------------------------------------------------------
+     Un toque = un voto
+     --------------------------------------------------------------------- */
+
+  // Feedback inmediato al apoyar el dedo (sin esperar al 'click').
+  contenedor.addEventListener('pointerdown', function (e) {
+    if (bloqueado) return;
+    var card = e.target.closest('.tarjeta');
+    if (card) card.classList.add('presionada');
+  }, { passive: true });
+
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) {
+    contenedor.addEventListener(ev, function (e) {
+      var card = e.target.closest && e.target.closest('.tarjeta');
+      if (card && !card.classList.contains('elegida')) card.classList.remove('presionada');
+    }, { passive: true });
+  });
+
+  contenedor.addEventListener('click', function (e) {
+    var card = e.target.closest('.tarjeta');
+    if (!card) return;
+
+    // Cerrojo síncrono: cualquier segundo toque (doble tap, dedo tembloroso,
+    // dos dedos a la vez) llega después de esta línea y se descarta.
+    if (bloqueado) return;
+    bloqueado = true;
+
+    votar(card);
+  });
+
+  function votar(card) {
+    contenedor.classList.add('bloqueada', 'decidido');
+    card.classList.remove('presionada');
+    card.classList.add('elegida');
+
+    if (navigator.vibrate) { try { navigator.vibrate(12); } catch (e) {} }
+
+    // El voto sale ya; la animación no espera a la red.
+    window.PV.votar(card.dataset.id).then(function (r) {
+      if (!r.ok && r.motivo === 'SIN_CONFIG') {
+        mostrarAviso('Falta conectar la base de datos');
+      }
+    });
+
+    luego(430, function () {
+      elegidoTag.textContent = card.dataset.nombre;
+      elegidoTag.hidden = false;
+      gracias.classList.add('visible');
+      confeti();
+    });
+
+    var espera = Math.max(1200, (CFG.GRACIAS_SEGUNDOS || 2.6) * 1000);
+    luego(430 + espera, function () {
+      gracias.classList.remove('visible');
+      luego(380, function () {
+        elegidoTag.hidden = true;
+        contenedor.classList.remove('decidido');
+        Array.prototype.forEach.call(
+          contenedor.querySelectorAll('.tarjeta'),
+          function (c) { c.classList.remove('elegida', 'presionada'); }
+        );
+        // Colchón final: el iPad queda inerte un instante más para que el
+        // cliente que se aleja no dispare un voto de rebote.
+        luego(CFG.BLOQUEO_MS || 700, function () {
+          contenedor.classList.remove('bloqueada');
+          bloqueado = false;
+        });
+      });
+    });
+  }
+
+  /* ---------------------------------------------------------------------
+     Confeti muy discreto
+     --------------------------------------------------------------------- */
+
+  var ctx = lienzo.getContext('2d');
+  var COLORES = ['#914315', '#E8AD72', '#FCD389', '#EF8052', '#9C532C', '#FAE6C5'];
+
+  function confeti() {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var W = lienzo.width = window.innerWidth * dpr;
+    var H = lienzo.height = window.innerHeight * dpr;
+    lienzo.style.width = window.innerWidth + 'px';
+    lienzo.style.height = window.innerHeight + 'px';
+
+    var piezas = [];
+    for (var i = 0; i < 46; i++) {
+      piezas.push({
+        x: W * (0.3 + Math.random() * 0.4),
+        y: H * (0.42 + Math.random() * 0.1),
+        vx: (Math.random() - 0.5) * 9 * dpr,
+        vy: (-7 - Math.random() * 8) * dpr,
+        g: 0.26 * dpr,
+        w: (4 + Math.random() * 6) * dpr,
+        h: (7 + Math.random() * 8) * dpr,
+        rot: Math.random() * Math.PI,
+        vr: (Math.random() - 0.5) * 0.24,
+        color: COLORES[(Math.random() * COLORES.length) | 0],
+      });
+    }
+
+    lienzo.classList.add('visible');
+    var inicio = performance.now();
+    var DURACION = 1500;
+
+    function frame(t) {
+      var transcurrido = t - inicio;
+      if (transcurrido > DURACION) {
+        lienzo.classList.remove('visible');
+        setTimeout(function () { ctx.clearRect(0, 0, W, H); }, 520);
+        return;
+      }
+      ctx.clearRect(0, 0, W, H);
+      ctx.globalAlpha = Math.max(0, 1 - transcurrido / DURACION);
+
+      piezas.forEach(function (p) {
+        p.vy += p.g;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.rot += p.vr;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      });
+
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  /* ---------------------------------------------------------------------
+     Acceso oculto al panel: 2.5 s con el dedo sobre el logo
+     --------------------------------------------------------------------- */
+
+  (function () {
+    var marca = document.getElementById('marca');
+    var t = null;
+    function iniciar() {
+      cancelar();
+      t = setTimeout(function () { location.href = 'admin.html'; }, 2500);
+    }
+    function cancelar() { if (t) { clearTimeout(t); t = null; } }
+    marca.addEventListener('pointerdown', iniciar);
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (ev) {
+      marca.addEventListener(ev, cancelar);
+    });
+    marca.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  })();
+
+  /* ---------------------------------------------------------------------
+     Blindaje de kiosco
+     --------------------------------------------------------------------- */
+
+  // Bloquea el zoom por pellizco y por doble toque en Safari/iPad.
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (ev) {
+    document.addEventListener(ev, function (e) { e.preventDefault(); }, { passive: false });
+  });
+  document.addEventListener('dblclick', function (e) { e.preventDefault(); }, { passive: false });
+
+  // Mantiene la pantalla encendida mientras la app esté visible.
+  var wakeLock = null;
+  function pedirWakeLock() {
+    if (!('wakeLock' in navigator)) return;
+    navigator.wakeLock.request('screen')
+      .then(function (l) { wakeLock = l; })
+      .catch(function () {});
+  }
+  pedirWakeLock();
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') {
+      pedirWakeLock();
+      // Al volver de un bloqueo de pantalla, recarga los datos y desbloquea.
+      limpiarTemporizadores();
+      gracias.classList.remove('visible');
+      arrancar();
+    }
+  });
+
+  /* ---------------------------------------------------------------------
+     Arranque
+     --------------------------------------------------------------------- */
+
+  var reintento = null;
+
+  function arrancar() {
+    if (!window.PV.listo) { mostrarAviso('Falta conectar la base de datos'); return; }
+    clearTimeout(reintento);
+
+    window.PV.cargarCampana().then(function (data) {
+      aviso.classList.remove('visible');
+      pintar(data.postres);
+    }).catch(function (err) {
+      var msg = (err && err.message) || '';
+      if (msg === 'SIN_CAMPANA') {
+        mostrarAviso('No hay una votación activa',
+          '<p>La base de datos está conectada, pero no encuentro una campaña activa.</p>' +
+          '<ol><li>Abre <b>admin.html</b>.</li>' +
+          '<li>Pulsa <b>Iniciar nueva campaña</b>.</li></ol>');
+      } else {
+        mostrarAviso('No pude conectar con la base de datos',
+          '<p>Revisa la conexión a internet del iPad y que las llaves de ' +
+          '<code>assets/js/config.js</code> sean correctas.</p>' +
+          '<p style="color:#9C532C">Detalle técnico: ' +
+          String(msg).replace(/[<>&]/g, '') + '</p>');
+        // Reintenta solo, para que nadie tenga que tocar el iPad.
+        clearTimeout(reintento);
+        reintento = setTimeout(arrancar, 12000);
+      }
+    });
+  }
+
+  arrancar();
+
+  // Refresca nombres y fotos cada 2 minutos, por si los cambias desde /admin
+  // mientras el iPad sigue abierto en el mostrador.
+  setInterval(function () {
+    if (bloqueado || document.visibilityState !== 'visible') return;
+    window.PV.cargarCampana().then(function (data) {
+      var actuales = Array.prototype.map.call(
+        contenedor.querySelectorAll('.tarjeta'),
+        function (c) { return c.dataset.id + '|' + c.dataset.nombre; }
+      ).join(',');
+      var nuevos = data.postres.map(function (p) { return p.id + '|' + p.name; }).join(',');
+      if (actuales !== nuevos) pintar(data.postres);
+    }).catch(function () {});
+  }, 120000);
+})();
+</script>
+</body>
+</html>

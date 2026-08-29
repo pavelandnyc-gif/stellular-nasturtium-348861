@@ -1,0 +1,33 @@
+[build]
+  publish = "."
+
+# /admin funciona igual que /admin.html
+[[redirects]]
+  from = "/admin"
+  to = "/admin.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    X-Frame-Options = "SAMEORIGIN"
+    # La votación no debe quedar indexada en Google.
+    X-Robots-Tag = "noindex, nofollow"
+
+[[headers]]
+  for = "/assets/img/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
+
+# El HTML y la config nunca se cachean, para que un cambio se vea al recargar.
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/assets/js/config.js"
+  [headers.values]
+    Cache-Control = "no-cache"
