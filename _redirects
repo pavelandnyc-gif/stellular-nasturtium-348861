@@ -1,1 +1,3 @@
 /admin  /admin.html  200
+# La carpeta jarvis/ es otra app (se publica en Vercel): no se sirve desde este sitio.
+/jarvis/*  /404  404!
