@@ -2,17 +2,22 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { BootSequence } from "./BootSequence";
+import { playBootSound } from "./bootSound";
+import { diag } from "./diag";
 import { call } from "./fetcher";
 import { IconCheck } from "./icons";
 import { closeMic, openMic, primeAudioContext, record, recordingSupported, type Recorder } from "./recorder";
-import { diag } from "./diag";
 import { toast } from "./Toast";
-import { loadVoicePrefs, prepare, speak, speechSupported, stopSpeaking, unlockAudio, voicesReady } from "./voice";
+import { audioUnlocked, loadVoicePrefs, prepare, speak, speechSupported, stopSpeaking, unlockAudio, voicesReady } from "./voice";
 
 const LAST_KEY = "jarvis.lastGreeting";
 const REPEAT_AFTER_MS = 60_000; // saluda cada vez que abres la app (o vuelves tras más de 1 minuto)
+const BOOT_MS = 2300;
 
 type Mode = "idle" | "listening" | "thinking" | "speaking";
+type Boot = "hidden" | "waiting" | "running" | "leaving";
 interface Action {
   title: string;
   detail: string;
@@ -26,50 +31,51 @@ const STATUS: Record<Mode, string> = {
   speaking: "Jarvis está hablando · toca para interrumpir",
 };
 
+// Fin de palabra compatible con acentos (\b no reconoce "í" como letra).
+const END = "(?=$|[\\s,.;:!¡?¿])";
+const YES = new RegExp(`^(s[ií]|sip|dale|claro|adelante|por favor|ok|okay|va|venga|perfecto|seguro|d[aá]melo|el informe|informe|cu[eé]ntame|a ver)${END}`, "i");
+const NO = new RegExp(`^(no|nop|despu[eé]s|luego|m[aá]s tarde|ahora no|no gracias)${END}`, "i");
+
+function greetingDue() {
+  try {
+    return Date.now() - Number(localStorage.getItem(LAST_KEY) ?? 0) > REPEAT_AFTER_MS;
+  } catch {
+    return true;
+  }
+}
+
 /**
- * Pantalla de bienvenida: saludo hablado al abrir y conversación por voz
- * tocando el reactor (escucha → entiende → responde en voz alta → vuelve a escuchar).
+ * Bienvenida de Jarvis: arranque del sistema → saludo corto → escucha sola →
+ * informe del día si lo pides. Tocando el reactor se conversa en cualquier momento.
  */
-export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boolean }) {
+export function JarvisGreeting({ text, name, aiReady }: { text: string; name: string; aiReady: boolean }) {
   const router = useRouter();
   const [shown, setShown] = useState("");
   const [mode, setMode] = useState<Mode>("idle");
+  const [boot, setBoot] = useState<Boot>("hidden");
   const [needsTap, setNeedsTap] = useState(false);
   const [heard, setHeard] = useState<string | null>(null);
   const [reply, setReply] = useState<string | null>(null);
   const [actions, setActions] = useState<Action[]>([]);
   const [tapToSend, setTapToSend] = useState(false);
+  const [greetKey, setGreetKey] = useState(0);
   const textRef = useRef(text);
   textRef.current = text;
-  const active = useRef(false); // conversación en curso
+  const active = useRef(false);
   const recRef = useRef<Recorder | null>(null);
   const coreRef = useRef<HTMLSpanElement>(null);
-  const greetedRef = useRef(false);
-  const [greetKey, setGreetKey] = useState(0); // cambia al volver a la app: dispara un saludo nuevo
-  const turnsRef = useRef(0); // veces que ya te entendió en esta conversación
-  const retriesRef = useRef(0); // intentos seguidos sin entender
+  const turnsRef = useRef(0);
+  const retriesRef = useRef(0);
+  const autoRef = useRef(false); // la conversación la empezó Jarvis (tras el saludo)
+  const offerRef = useRef(false); // acaba de ofrecer el informe del día
 
   const markGreeted = () => {
-    greetedRef.current = true;
     try {
       localStorage.setItem(LAST_KEY, String(Date.now()));
     } catch {
       /* */
     }
   };
-
-  const sayGreeting = useCallback(async () => {
-    setMode("speaking");
-    const h = speak(textRef.current, loadVoicePrefs(), undefined, () => setMode((m) => (m === "speaking" ? "idle" : m)));
-    const ok = await h.started;
-    diag("greeting", ok ? "empezó a sonar" : "bloqueado (espera un toque)", { engine: loadVoicePrefs().engine, chars: textRef.current.length });
-    if (ok) {
-      setNeedsTap(false);
-      markGreeted();
-      h.done.then(() => diag("greeting", "terminó"));
-    } else setMode("idle");
-    return ok;
-  }, []);
 
   // Texto del saludo letra por letra.
   useEffect(() => {
@@ -83,43 +89,83 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
     return () => clearInterval(id);
   }, [text]);
 
-  // Saludo hablado al abrir (en iPhone suena con el primer toque).
-  useEffect(() => {
-    if (!speechSupported() || !loadVoicePrefs().greet) return;
-    let last = 0;
-    try {
-      last = Number(localStorage.getItem(LAST_KEY) ?? 0);
-    } catch {
-      /* */
+  /** Dice el saludo; al terminar, si está activado, se queda escuchando. */
+  const greet = useCallback(async () => {
+    markGreeted();
+    setNeedsTap(false);
+    setMode("speaking");
+    const h = speak(textRef.current, loadVoicePrefs());
+    const ok = await h.started;
+    diag("greeting", ok ? "empezó a sonar" : "no sonó", { engine: loadVoicePrefs().engine });
+    if (!ok) {
+      setMode("idle");
+      return;
     }
-    if (Date.now() - last < REPEAT_AFTER_MS) return;
+    await h.done;
+    setMode("idle");
+    const prefs = loadVoicePrefs();
+    if (prefs.autoListen && aiReady && recordingSupported() && !active.current && document.visibilityState === "visible") {
+      startConversation(true, /informe/.test(textRef.current));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiReady]);
+
+  /** Toque en la pantalla de arranque: es el gesto que habilita el sonido en el iPhone. */
+  function bootTap() {
+    unlockAudio();
+    primeAudioContext();
+    runBoot();
+  }
+
+  function runBoot() {
+    setBoot("running");
+    playBootSound();
+    setTimeout(() => {
+      setBoot("leaving");
+      setTimeout(() => setBoot("hidden"), 500);
+      greet();
+    }, BOOT_MS);
+  }
+
+  // Al abrir (o volver a la app): arranque + saludo.
+  useEffect(() => {
+    if (!greetingDue()) return;
+    const prefs = loadVoicePrefs();
     let cancelled = false;
-    const onTap = () => {
-      cleanup();
-      unlockAudio();
-      if (!cancelled && !greetedRef.current && !active.current) sayGreeting();
-    };
-    const cleanup = () => {
-      document.removeEventListener("touchend", onTap);
-      document.removeEventListener("click", onTap);
-    };
-    voicesReady().then(async () => {
-      if (greetKey > 0) await new Promise((res) => setTimeout(res, 900)); // espera el saludo actualizado
-      await prepare(textRef.current); // audio listo de antemano: suena al instante al tocar
-      if (cancelled || active.current) return;
-      const ok = await sayGreeting();
-      if (!ok && !cancelled && !active.current) {
+    // Prepara el audio del saludo mientras corre la animación.
+    voicesReady().then(() => prepare(textRef.current));
+    if (prefs.boot) {
+      setBoot(audioUnlocked() ? "running" : "waiting");
+      if (audioUnlocked()) setTimeout(() => !cancelled && runBoot(), 50);
+    } else if (prefs.greet && speechSupported()) {
+      const onTap = () => {
+        cleanup();
+        unlockAudio();
+        primeAudioContext();
+        if (!cancelled && !active.current) greet();
+      };
+      const cleanup = () => {
+        document.removeEventListener("touchend", onTap);
+        document.removeEventListener("click", onTap);
+      };
+      voicesReady().then(async () => {
+        await prepare(textRef.current);
+        if (cancelled || active.current) return;
+        if (audioUnlocked()) return greet();
         setNeedsTap(true);
         document.addEventListener("touchend", onTap, { once: true });
         document.addEventListener("click", onTap, { once: true });
-      }
-    });
+      });
+      return () => {
+        cancelled = true;
+        cleanup();
+      };
+    }
     return () => {
       cancelled = true;
-      cleanup();
-      stopSpeaking();
     };
-  }, [sayGreeting, greetKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [greetKey]);
 
   // Al volver a la app después de un rato: datos frescos y saludo nuevo.
   useEffect(() => {
@@ -127,15 +173,19 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
     const onVis = () => {
       if (document.visibilityState === "hidden") {
         hiddenAt = Date.now();
+        if (active.current) {
+          recRef.current?.cancel();
+          endConversation();
+        }
         stopSpeaking();
-      } else if (hiddenAt && Date.now() - hiddenAt > REPEAT_AFTER_MS && !active.current) {
-        greetedRef.current = false;
-        router.refresh(); // trae un saludo con tus pendientes actualizados
-        setGreetKey((k) => k + 1);
+      } else if (hiddenAt && Date.now() - hiddenAt > REPEAT_AFTER_MS) {
+        router.refresh();
+        setTimeout(() => setGreetKey((k) => k + 1), 900); // espera el saludo actualizado
       }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   // El núcleo del reactor late con tu voz mientras te escucha.
@@ -179,7 +229,6 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
     const data = await res.json().catch(() => ({}));
     diag("stt", res.ok ? `ok: "${String(data.text ?? "").slice(0, 80)}"` : `error ${res.status}: ${data.error ?? ""}`, {
       size: blob.size,
-      type: blob.type,
     });
     if (res.status === 401) {
       window.location.href = "/login";
@@ -192,6 +241,14 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
     return (data.text as string) ?? "";
   }
 
+  async function say(answer: string) {
+    setReply(answer);
+    setMode("speaking");
+    const h = speak(answer, loadVoicePrefs());
+    await h.started;
+    await h.done;
+  }
+
   async function turn(): Promise<void> {
     if (!active.current) return;
     let stream: MediaStream;
@@ -199,7 +256,7 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
       stream = await openMic();
     } catch (e) {
       diag("mic", `getUserMedia falló: ${(e as Error).name} ${(e as Error).message}`);
-      toast("Necesito permiso para usar el micrófono. Actívalo en Settings → Jarvis → Microphone.", "error");
+      if (!autoRef.current) toast("Necesito permiso para usar el micrófono. Actívalo en Settings → Jarvis → Microphone.", "error");
       return endConversation();
     }
     setMode("listening");
@@ -217,10 +274,11 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
     const res = await r.result;
     clearTimeout(hintTimer);
     recRef.current = null;
-    diag("record", `fin: ${res.reason}`, { bytes: res.blob?.size ?? 0, mime: r.mime, autoStop: r.autoStop });
+    diag("record", `fin: ${res.reason}`, { bytes: res.blob?.size ?? 0, autoStop: r.autoStop, auto: autoRef.current });
     if (!active.current) return;
-    // Primer intento sin voz detectada: igual se envía (quizá hablaste bajito).
-    // En turnos siguientes, el silencio significa que terminaste.
+
+    // Si Jarvis empezó a escuchar solo y no dijiste nada, se retira en silencio.
+    if (res.reason === "no-speech" && autoRef.current && turnsRef.current === 0) return endConversation();
     if (!res.blob || (res.reason === "no-speech" && turnsRef.current > 0)) {
       return endConversation(turnsRef.current ? "Aquí estaré cuando me necesites." : "No llegó audio. Toca el reactor e inténtalo de nuevo.");
     }
@@ -231,7 +289,7 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
     if (said === null) return endConversation();
     if (!said) {
       if (++retriesRef.current >= 2 || res.reason === "no-speech") {
-        return endConversation("No te escuché bien. Toca el reactor cuando quieras intentarlo de nuevo.");
+        return endConversation(autoRef.current && !turnsRef.current ? undefined : "No te escuché bien. Toca el reactor cuando quieras.");
       }
       setReply("No te entendí bien. ¿Me lo repites?");
       return turn();
@@ -241,6 +299,27 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
     setHeard(said);
     setReply(null);
     setActions([]);
+
+    // Respuesta a "¿Te doy el informe del día?"
+    const clean = said.trim().replace(/^[¡¿,.\s]+/, "");
+    const offered = offerRef.current;
+    offerRef.current = false;
+    if ((offered && YES.test(clean)) || /^(dame |danos )?(el )?informe( del d[ií]a)?[.!]?$/i.test(clean)) {
+      try {
+        const b = await call<{ text: string }>("/api/briefing");
+        if (!active.current) return;
+        await say(b.text);
+      } catch {
+        return endConversation();
+      }
+      if (active.current) return turn();
+      return;
+    }
+    if (offered && NO.test(clean)) {
+      await say("Entendido. Aquí estoy si me necesitas.");
+      return endConversation();
+    }
+
     let answer: { text: string; actions: Action[] };
     try {
       answer = (await call<{ reply: { text: string; actions: Action[] } }>("/api/chat", "POST", { message: said })).reply;
@@ -249,16 +328,35 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
       return endConversation();
     }
     if (!active.current) return;
-    setReply(answer.text);
     setActions(answer.actions);
     if (answer.actions.length) router.refresh();
-
-    setMode("speaking");
-    const h = speak(answer.text, loadVoicePrefs());
-    const spoke = await h.started;
-    diag("speak", spoke ? "ok" : "no sonó (bloqueado o sin voz)");
-    await h.done;
+    await say(answer.text);
     if (active.current) return turn(); // sigue la conversación
+  }
+
+  function startConversation(auto: boolean, offeringBriefing = false) {
+    if (!aiReady) {
+      if (!auto) toast("La conversación con IA requiere configuración.", "error");
+      return;
+    }
+    if (!recordingSupported()) {
+      if (!auto) {
+        toast("Este navegador no permite grabar voz. Usa el chat y el micrófono del teclado.", "info");
+        router.push("/jarvis");
+      }
+      return;
+    }
+    active.current = true;
+    autoRef.current = auto;
+    offerRef.current = offeringBriefing;
+    turnsRef.current = 0;
+    retriesRef.current = 0;
+    if (!auto) {
+      setHeard(null);
+      setReply(null);
+      setActions([]);
+    }
+    turn();
   }
 
   function onReactor() {
@@ -273,25 +371,21 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
       return setMode("idle");
     }
     if (mode === "thinking") return;
-    // idle → empezar a conversar
-    if (!aiReady) return toast("La conversación con IA requiere configuración.", "error");
-    if (!recordingSupported()) {
-      toast("Este navegador no permite grabar voz. Usa el chat y el micrófono del teclado.", "info");
-      return router.push("/jarvis");
-    }
-    active.current = true;
-    turnsRef.current = 0;
-    retriesRef.current = 0;
-    setHeard(null);
-    setReply(null);
-    setActions([]);
-    turn();
+    startConversation(false);
   }
 
   const showGreeting = !heard && !reply;
 
   return (
     <section className="rise mb-6 flex flex-col items-center text-center">
+      {boot !== "hidden" &&
+        createPortal(
+          // Fuera de la sección animada: así cubre toda la pantalla.
+          <div className={boot === "leaving" ? "boot-out" : ""}>
+            <BootSequence name={name} waiting={boot === "waiting"} running={boot === "running" || boot === "leaving"} onTap={bootTap} />
+          </div>,
+          document.body,
+        )}
       <button
         onClick={onReactor}
         onTouchEnd={(e) => e.stopPropagation()}
@@ -318,7 +412,7 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
       </p>
 
       {showGreeting ? (
-        <p className="min-h-[4.5rem] max-w-md text-[17px] leading-relaxed text-text/95">
+        <p className="min-h-[3rem] max-w-md text-[17px] leading-relaxed text-text/95">
           {shown}
           {shown.length < text.length && <span className="animate-pulse text-cyan">▍</span>}
         </p>

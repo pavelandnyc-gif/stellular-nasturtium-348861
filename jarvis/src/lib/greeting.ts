@@ -1,4 +1,5 @@
 import { nowIn } from "./time";
+import type { Weather } from "./weather";
 
 // Saludo de bienvenida al abrir la app, al estilo del J.A.R.V.I.S. de Iron Man:
 // elegante, servicial y con un toque de humor seco. Se arma con datos reales
@@ -65,7 +66,30 @@ export function buildGreeting(g: GreetingInput): string {
       r,
     );
 
-  const parts = [opening];
+  // Saludo corto (como en las películas): el detalle va en el informe, si lo pides.
+  const nothing = !g.todayTasks.length && !g.overdueCount && !g.pendingHabits.length;
+  return `${opening} ${nothing ? pick(["Agenda despejada. ¿En qué te ayudo?", "Nada urgente en el radar. Tú dime."], r) : pick(["¿Te doy el informe del día?", "¿Quieres el informe del día?"], r)}`;
+}
+
+export interface BriefingInput extends GreetingInput {
+  weather: Weather | null;
+}
+
+/** Informe del día: hora, clima, pendientes y hábitos, en tono Jarvis y fácil de escuchar. */
+export function buildBriefing(g: BriefingInput): string {
+  const r = g.random ?? Math.random;
+  const local = nowIn(g.tz, g.now);
+  const parts: string[] = [`Son las ${speakTime(local.toFormat("HH:mm"))}.`];
+  const w = g.weather;
+  if (w) {
+    let line = `Afuera, ${w.temp} grados y ${w.desc}; máxima de ${w.high}.`;
+    if (w.rainFromHour !== null) {
+      line += ` Lluvia probable desde las ${speakTime(`${String(w.rainFromHour).padStart(2, "0")}:00`)}: te sugiero paraguas.`;
+    } else if (w.rainChance < 20 && /despejado|parcialmente/.test(w.desc)) {
+      line += " Buen día para salir.";
+    }
+    parts.push(line);
+  }
   const t = g.todayTasks;
   if (t.length === 1) {
     parts.push(`Un solo pendiente en el radar: ${t[0].title}${t[0].due_time ? `, a las ${speakTime(t[0].due_time)}` : ""}.`);
@@ -93,9 +117,10 @@ export function buildGreeting(g: GreetingInput): string {
   } else if (g.doneHabits) {
     parts.push("Hábitos del día completos. Impecable, como siempre.");
   }
-  parts.push(pick(["¿Qué necesitas?", "A tus órdenes.", "¿Por dónde empezamos?", "Tú dime, yo me encargo."], r));
+  parts.push(pick(["Eso es todo. ¿Algo más?", "Fin del informe. Tú dime.", "Es todo por ahora. ¿Qué sigue?"], r));
   return parts.join(" ");
 }
+
 
 function speakTime(time: string) {
   // "10:00 a. m." se lee mejor como "10 de la mañana"

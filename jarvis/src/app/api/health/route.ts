@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { safeEqual } from "@/lib/session";
 import { checkTts } from "@/lib/tts";
+import { getWeather } from "@/lib/weather";
 import { TOOL_DEFS } from "@/lib/ai/tools";
 import { aiSelfTest } from "@/lib/ai/agent";
 import { authMode, env } from "@/lib/env";
@@ -87,6 +88,11 @@ export async function GET(req: Request) {
     }
   }
   const voiceCheck = aiCheck !== undefined && env.elevenKey() ? await checkTts() : undefined;
+  let weatherCheck: string | undefined;
+  if (aiCheck !== undefined) {
+    const w = await getWeather("America/New_York", "F");
+    weatherCheck = w ? `ok: ${w.temp}°F ${w.desc}` : "error: no conecta con Open-Meteo";
+  }
   const ok = checks.database === "ok" && checks.auth === "supabase" && checks.allowedEmails > 0 && checks.push && checks.cronSecret;
-  return NextResponse.json({ ok, ...checks, ...(aiCheck ? { aiCheck } : {}), ...(voiceCheck ? { voiceCheck } : {}) });
+  return NextResponse.json({ ok, ...checks, ...(aiCheck ? { aiCheck } : {}), ...(voiceCheck ? { voiceCheck } : {}), ...(weatherCheck ? { weatherCheck } : {}) });
 }

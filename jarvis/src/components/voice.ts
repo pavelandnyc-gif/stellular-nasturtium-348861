@@ -7,13 +7,15 @@ import { diag } from "./diag";
 export interface VoicePrefs {
   engine: "premium" | "device"; // premium = ElevenLabs (si está configurada); device = voz del iPhone
   greet: boolean; // saludar en voz alta al abrir
+  boot: boolean; // animación y sonido de arranque
+  autoListen: boolean; // escuchar apenas termina el saludo
   replies: "voice" | "always" | "never"; // leer respuestas: solo si hablaste, siempre o nunca
   voiceName: string | null;
   rate: number;
 }
 
 const KEY = "jarvis.voice";
-const DEFAULTS: VoicePrefs = { engine: "premium", greet: true, replies: "voice", voiceName: null, rate: 1 };
+const DEFAULTS: VoicePrefs = { engine: "premium", greet: true, boot: true, autoListen: true, replies: "voice", voiceName: null, rate: 1 };
 
 export function loadVoicePrefs(): VoicePrefs {
   try {
@@ -149,6 +151,11 @@ export function unlockAudio() {
     .then(() => (a.dataset.unlocked = "1"))
     .catch(() => {});
   if (speechSupported() && !speechSynthesis.speaking) speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+}
+
+/** ¿Ya se puede reproducir audio sin un toque nuevo? (iPhone) */
+export function audioUnlocked() {
+  return !!audioEl?.dataset.unlocked;
 }
 
 /** Instala el desbloqueo en el primer toque de cualquier pantalla. */

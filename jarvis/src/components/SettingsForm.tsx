@@ -9,6 +9,7 @@ interface S {
   timezone: string;
   summary_enabled: boolean;
   summary_time: string;
+  weather_unit: "F" | "C";
 }
 
 export function SettingsForm({ initial, zones }: { initial: S; zones: string[] }) {
@@ -45,6 +46,13 @@ export function SettingsForm({ initial, zones }: { initial: S; zones: string[] }
               {zones.map((z) => (
                 <option key={z} value={z}>{z.replace(/_/g, " ")}</option>
               ))}
+            </select>
+          </label>
+          <label className="block text-xs text-muted">
+            Temperatura en el informe de Jarvis
+            <select className="field mt-1" value={s.weather_unit} onChange={(e) => setS({ ...s, weather_unit: e.target.value as "F" | "C" })}>
+              <option value="F">Fahrenheit (°F)</option>
+              <option value="C">Celsius (°C)</option>
             </select>
           </label>
         </div>
