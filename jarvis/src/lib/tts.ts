@@ -123,7 +123,13 @@ export async function checkTts(): Promise<string> {
       signal: AbortSignal.timeout(15_000),
     });
     if (res.ok) return `ok: ${((await res.json()) as { name: string }).name}`;
-    if (res.status === 401) return "error: clave de ElevenLabs inválida";
+    if (res.status === 401) {
+      // ElevenLabs explica el motivo: clave incorrecta o permisos que faltan en la clave.
+      const body = (await res.json().catch(() => ({}))) as { detail?: { status?: string; message?: string } };
+      const why = body.detail?.status ?? "";
+      if (why === "missing_permissions") return `error: a la clave le faltan permisos (${body.detail?.message?.slice(0, 120) ?? ""})`;
+      return `error: clave de ElevenLabs inválida${why ? ` (${why})` : ""}`;
+    }
     if (res.status === 404) return "error: la voz configurada no existe en tu cuenta";
     return `error: ElevenLabs respondió ${res.status}`;
   } catch {
