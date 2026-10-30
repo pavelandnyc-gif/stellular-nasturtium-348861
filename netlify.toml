@@ -1,6 +1,13 @@
 [build]
   publish = "."
 
+# La carpeta jarvis/ es otra app (se publica en Vercel): no se sirve desde este sitio.
+[[redirects]]
+  from = "/jarvis/*"
+  to = "/404"
+  status = 404
+  force = true
+
 # /admin funciona igual que /admin.html
 [[redirects]]
   from = "/admin"

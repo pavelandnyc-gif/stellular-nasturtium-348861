@@ -1,0 +1,161 @@
+import "server-only";
+import Anthropic from "@anthropic-ai/sdk";
+import { DateTime } from "luxon";
+import { query } from "../db";
+import { env } from "../env";
+import { runTool, TOOL_DEFS, type ActionCard, type ToolContext } from "./tools";
+
+export function aiConfigured() {
+  return !!env.anthropicKey();
+}
+
+const SYSTEM_PROMPT = `Eres Jarvis, el asistente personal de Javier. Hablas español, de forma cercana, directa y breve (1–3 frases). Llamas a la persona por su nombre de vez en cuando, sin exagerar.
+
+Tu trabajo: ayudarle a recordar ideas, organizar pendientes, cumplir tareas repetitivas y mantener hábitos. Todo lo guardas y consultas con las herramientas; no tienes otra memoria.
+
+Cómo clasificar lo que te dicen:
+- IDEA: algo para recordar o pensar, sin acción con fecha ("guarda esta idea…", "se me ocurrió…"). → save_idea.
+- TAREA: una acción concreta, con o sin fecha ("tengo que…", "pendiente: …"). → create_task (sin hora no suena aviso).
+- RECORDATORIO: una tarea con hora en la que quiere un aviso ("recuérdame…"). → create_task con date y time. Si repite ("los lunes…", "cada día…") usa repeat.
+- HÁBITO: algo que quiere practicar con regularidad para mejorar ("quiero leer veinte minutos todas las noches", "quiero hacer ejercicio"). → create_habit. Si además dice "recuérdame" para algo rutinario como hacer ejercicio en días fijos, también es un hábito con hora de aviso.
+
+Reglas de fechas y horas:
+- Usa la fecha y hora actuales del bloque <contexto> y su zona horaria. Convierte expresiones como "mañana", "el viernes", "a las diez" a fecha AAAA-MM-DD y hora HH:MM de 24 h.
+- "A las diez" sin más contexto: si es para un recordatorio y no queda claro si es mañana o noche, usa la interpretación más natural (10:00 de la mañana para llamadas o diligencias; para "esta noche", 22:00). Si de verdad es ambiguo, pregunta.
+- Si para un recordatorio falta la hora, o la fecha es ambigua, haz UNA pregunta breve antes de guardar. Una tarea o una idea sí pueden quedar sin hora.
+- Al confirmar, repite siempre la fecha y hora concretas que entendiste, usando el campo "fecha_exacta" o "cuando" que devuelve la herramienta (p. ej. "jueves 30 de octubre de 2026, 10:00 a. m.").
+
+Reglas de honestidad:
+- Solo di que algo quedó guardado, cambiado o completado si la herramienta respondió ok: true. Si falló, dilo con sencillez y propone qué hacer.
+- Para "esta tarea", "esa idea", etc., usa el historial reciente o busca con list_tasks / search_ideas. Si hay varias posibles, pregunta cuál.
+- Antes de eliminar algo, asegúrate de que la persona lo pidió claramente.
+- Para preguntas como "¿qué tengo pendiente hoy?", consulta con list_tasks (today y overdue) y list_habits, y resume en pocas líneas.
+
+Tono con los hábitos: anima sin regañar. Si dejó de hacer algo, ayúdale a retomarlo con un paso pequeño.`;
+
+const FALLBACK_MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-opus-5"];
+const MAX_TURNS = 8;
+const HISTORY_MESSAGES = 16;
+
+export interface ChatReply {
+  text: string;
+  actions: ActionCard[];
+}
+
+let client: Anthropic | null = null;
+function getClient() {
+  if (!client) client = new Anthropic({ apiKey: env.anthropicKey(), maxRetries: 2, timeout: 60_000 });
+  return client;
+}
+
+function contextBlock(tz: string) {
+  const now = DateTime.now().setZone(tz).setLocale("es");
+  return `<contexto>Ahora: ${now.toFormat("cccc d 'de' LLLL 'de' yyyy, HH:mm")} (${now.toISODate()} ${now.toFormat("HH:mm")}, zona ${tz}).</contexto>`;
+}
+
+/** Historial breve para que Jarvis entienda "esta tarea" o "esa idea". */
+async function loadHistory(userId: string): Promise<Anthropic.Beta.BetaMessageParam[]> {
+  const rows = await query<{ role: "user" | "assistant"; content: string; actions: ActionCard[] }>(
+    "select role, content, actions from jarvis.chat_messages where user_id = $1 order by created_at desc limit $2",
+    [userId, HISTORY_MESSAGES],
+  );
+  const msgs: Anthropic.Beta.BetaMessageParam[] = [];
+  for (const r of rows.reverse()) {
+    let text = r.content;
+    if (r.role === "assistant" && r.actions?.length) {
+      text += `\n[Acciones guardadas: ${r.actions.map((a) => `${a.title}: ${a.detail}${a.href ? ` (${a.href})` : ""}`).join(" | ")}]`;
+    }
+    const last = msgs.at(-1);
+    if (last && last.role === r.role) last.content = `${last.content}\n${text}`;
+    else msgs.push({ role: r.role, content: text });
+  }
+  while (msgs.length && msgs[0].role !== "user") msgs.shift();
+  return msgs;
+}
+
+export async function saveChat(userId: string, role: "user" | "assistant", content: string, actions: ActionCard[] = []) {
+  await query("insert into jarvis.chat_messages (user_id, role, content, actions) values ($1, $2, $3, $4::jsonb)", [
+    userId,
+    role,
+    content,
+    JSON.stringify(actions),
+  ]);
+}
+
+export async function chat(userId: string, tz: string, userText: string): Promise<ChatReply> {
+  const ctx: ToolContext = { userId, tz };
+  const model = env.aiModel();
+  const history = await loadHistory(userId);
+  const messages: Anthropic.Beta.BetaMessageParam[] = [
+    ...history,
+    {
+      role: "user",
+      content: [
+        { type: "text", text: contextBlock(tz) },
+        { type: "text", text: userText },
+      ],
+    },
+  ];
+  const actions: ActionCard[] = [];
+  const useFallbacks = FALLBACK_MODELS.includes(model);
+
+  for (let turn = 0; turn < MAX_TURNS; turn++) {
+    const response = await getClient().beta.messages.create({
+      model,
+      max_tokens: 16000,
+      system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+      tools: TOOL_DEFS,
+      tool_choice: { type: "auto" },
+      messages,
+      output_config: { effort: env.aiEffort() },
+      ...(useFallbacks ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
+    });
+
+    if (response.stop_reason === "refusal") {
+      return { text: "No puedo ayudarte con eso, Javier. ¿Lo intentamos de otra forma?", actions };
+    }
+
+    const toolUses = response.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
+    const text = response.content
+      .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("\n")
+      .trim();
+
+    if (response.stop_reason === "pause_turn") {
+      messages.push({ role: "assistant", content: response.content });
+      continue;
+    }
+    if (!toolUses.length) {
+      return { text: text || "Listo.", actions };
+    }
+    if (response.stop_reason === "max_tokens") {
+      return { text: "Se me cortó la respuesta. ¿Me lo repites más corto?", actions };
+    }
+
+    messages.push({ role: "assistant", content: response.content });
+    const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
+    for (const tu of toolUses) {
+      let outcome;
+      try {
+        outcome = await runTool(tu.name, tu.input, ctx);
+      } catch (e) {
+        console.error("Error en herramienta", tu.name, e);
+        outcome = { result: { ok: false, error: "Error interno al guardar. No se realizó el cambio." }, isError: true };
+      }
+      if (outcome.action) actions.push(outcome.action);
+      results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(outcome.result), is_error: outcome.isError });
+    }
+    messages.push({ role: "user", content: results });
+  }
+  return { text: "Me enredé con esa petición. ¿Me la dices de otra forma?", actions };
+}
+
+export function describeAiError(e: unknown) {
+  if (e instanceof Anthropic.AuthenticationError) return "La clave de IA no es válida. Revisa ANTHROPIC_API_KEY.";
+  if (e instanceof Anthropic.RateLimitError) return "La IA está saturada o se alcanzó el límite de uso. Prueba en un minuto.";
+  if (e instanceof Anthropic.BadRequestError) return `La IA rechazó la petición (${e.message}). Revisa AI_MODEL.`;
+  if (e instanceof Anthropic.APIConnectionError) return "No pude conectar con el servicio de IA. Revisa tu conexión.";
+  if (e instanceof Anthropic.APIError) return `Error del servicio de IA (${e.status}).`;
+  return "Ocurrió un error inesperado con la IA.";
+}
