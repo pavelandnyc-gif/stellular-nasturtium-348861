@@ -23,9 +23,38 @@ interface Driver extends Querier {
 // convertirlas accidentalmente a otra zona horaria.
 const DATE_OID = 1082;
 
+/**
+ * Lee DATABASE_URL de forma tolerante: la contraseña puede traer símbolos
+ * (@ # / ? %) sin codificar, o quedar entre los corchetes de la plantilla de
+ * Supabase ("[mi-clave]"). Se toma todo lo que hay entre "usuario:" y la última "@".
+ */
+export function parseDatabaseUrl(raw: string) {
+  const m = raw.trim().match(/^postgres(?:ql)?:\/\/([^:/@]+):(.*)@([^@/:?#]+)(?::(\d+))?\/([^?#]*)/);
+  if (!m) return null;
+  let password = m[2];
+  if (/^\[.*\]$/.test(password)) password = password.slice(1, -1);
+  try {
+    if (/%[0-9a-f]{2}/i.test(password)) password = decodeURIComponent(password);
+  } catch {
+    // no estaba codificada: se usa tal cual
+  }
+  return {
+    user: decodeURIComponent(m[1]),
+    password,
+    host: m[3],
+    port: m[4] ? Number(m[4]) : 5432,
+    database: m[5] || "postgres",
+  };
+}
+
 async function createPostgres(url: string): Promise<Driver> {
   const { default: postgres } = await import("postgres");
-  const sql = postgres(url, {
+  const parts = parseDatabaseUrl(url);
+  if (!parts) throw new Error("Invalid URL: DATABASE_URL no tiene el formato postgresql://usuario:clave@servidor:puerto/base");
+  const local = parts.host === "localhost" || parts.host === "127.0.0.1";
+  const sql = postgres({
+    ...parts,
+    ssl: local ? false : "require",
     prepare: false, // requerido por el "transaction pooler" de Supabase
     max: 3,
     idle_timeout: 20,
