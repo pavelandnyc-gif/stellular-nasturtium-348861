@@ -45,6 +45,7 @@ export async function GET(req: Request) {
     cronSecret: !!env.cronSecret(),
     ai: !!env.anthropicKey(),
     aiModel: env.aiModel(),
+    voicePremium: !!env.elevenKey(),
     appUrl: !!env.appUrl(),
     // Huella de 6 caracteres de la contraseña: permite comprobar cuál está puesta sin revelarla.
     dbPasswordFingerprint: dbFingerprint(),
