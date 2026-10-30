@@ -88,6 +88,37 @@ export async function saveChat(userId: string, role: "user" | "assistant", conte
   ]);
 }
 
+/** Una llamada a la IA con exactamente la misma configuración que usa Jarvis. */
+function createTurn(messages: Anthropic.Beta.BetaMessageParam[], model: string, useFallbacks: boolean, maxTokens = 16000) {
+  return getClient().beta.messages.create({
+    model,
+    max_tokens: maxTokens,
+    system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+    tools: TOOL_DEFS,
+    tool_choice: { type: "auto" },
+    messages,
+    output_config: { effort: env.aiEffort() },
+    ...(useFallbacks ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
+  });
+}
+
+/** Prueba real de punta a punta (misma configuración que el chat). Cuesta menos de 1 centavo. */
+export async function aiSelfTest(): Promise<string> {
+  const model = env.aiModel();
+  const r = await createTurn(
+    [{ role: "user", content: "Prueba técnica del sistema: responde solo con la palabra listo, sin usar herramientas." }],
+    model,
+    FALLBACK_MODELS.includes(model),
+    2000,
+  );
+  const text = r.content
+    .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join(" ")
+    .trim();
+  return `ok: respondió "${text.slice(0, 40)}" (${r.stop_reason})`;
+}
+
 export async function chat(userId: string, tz: string, userText: string): Promise<ChatReply> {
   const ctx: ToolContext = { userId, tz };
   const model = env.aiModel();
@@ -106,16 +137,7 @@ export async function chat(userId: string, tz: string, userText: string): Promis
   const useFallbacks = FALLBACK_MODELS.includes(model);
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
-    const response = await getClient().beta.messages.create({
-      model,
-      max_tokens: 16000,
-      system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
-      tools: TOOL_DEFS,
-      tool_choice: { type: "auto" },
-      messages,
-      output_config: { effort: env.aiEffort() },
-      ...(useFallbacks ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
-    });
+    const response = await createTurn(messages, model, useFallbacks);
 
     if (response.stop_reason === "refusal") {
       return { text: "No puedo ayudarte con eso, Javier. ¿Lo intentamos de otra forma?", actions };
