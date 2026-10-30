@@ -24,7 +24,7 @@ export const POST = api(async (req, { user, profile }) => {
   }
   await saveChat(user.id, "user", message);
   try {
-    const reply = await chat(user.id, profile.timezone, message);
+    const reply = await chat(user.id, profile.timezone, message, profile.display_name);
     await saveChat(user.id, "assistant", reply.text, reply.actions);
     return { ok: true, reply };
   } catch (e) {

@@ -9,11 +9,11 @@ export function aiConfigured() {
   return !!env.anthropicKey();
 }
 
-const SYSTEM_PROMPT = `Eres Jarvis, el asistente personal de Javier, inspirado en el J.A.R.V.I.S. de Tony Stark en Iron Man. Hablas español.
+const SYSTEM_PROMPT = `Eres Jarvis, el asistente personal de tu usuario, inspirado en el J.A.R.V.I.S. de Tony Stark en Iron Man. Hablas español.
 
 Tu estilo:
 - Elegante, servicial y sereno, con un toque de humor seco e ingenioso (nunca sarcástico ni pesado). Como un mayordomo brillante que también es su amigo.
-- Tuteas a Javier y lo llamas por su nombre de vez en cuando. Frases típicas tuyas: "A tus órdenes", "Hecho", "Anotado", "Todo en orden", "Como desees". Úsalas con naturalidad, sin repetirlas siempre.
+- Tuteas a tu usuario y te diriges a él SIEMPRE con el tratamiento indicado en <contexto> ("Llámalo: …"), por ejemplo "Jefe". Nunca uses otro nombre. Frases típicas tuyas: "A tus órdenes", "Hecho", "Anotado", "Todo en orden", "Como desees". Úsalas con naturalidad, sin repetirlas siempre.
 - Breve y directo: 1–3 frases. Tus respuestas a menudo se leen en voz alta, así que escribe como se habla: sin listas largas, sin markdown, sin emojis.
 - Si algo sale mal, lo dices con calma y propones una solución, como lo haría Jarvis en la película.
 
@@ -54,9 +54,9 @@ function getClient() {
   return client;
 }
 
-function contextBlock(tz: string) {
+function contextBlock(tz: string, name: string) {
   const now = DateTime.now().setZone(tz).setLocale("es");
-  return `<contexto>Ahora: ${now.toFormat("cccc d 'de' LLLL 'de' yyyy, HH:mm")} (${now.toISODate()} ${now.toFormat("HH:mm")}, zona ${tz}).</contexto>`;
+  return `<contexto>Ahora: ${now.toFormat("cccc d 'de' LLLL 'de' yyyy, HH:mm")} (${now.toISODate()} ${now.toFormat("HH:mm")}, zona ${tz}). Llámalo: ${name}.</contexto>`;
 }
 
 /** Historial breve para que Jarvis entienda "esta tarea" o "esa idea". */
@@ -119,7 +119,7 @@ export async function aiSelfTest(): Promise<string> {
   return `ok: respondió "${text.slice(0, 40)}" (${r.stop_reason})`;
 }
 
-export async function chat(userId: string, tz: string, userText: string): Promise<ChatReply> {
+export async function chat(userId: string, tz: string, userText: string, name = "Jefe"): Promise<ChatReply> {
   const ctx: ToolContext = { userId, tz };
   const model = env.aiModel();
   const history = await loadHistory(userId);
@@ -128,7 +128,7 @@ export async function chat(userId: string, tz: string, userText: string): Promis
     {
       role: "user",
       content: [
-        { type: "text", text: contextBlock(tz) },
+        { type: "text", text: contextBlock(tz, name) },
         { type: "text", text: userText },
       ],
     },
@@ -140,7 +140,7 @@ export async function chat(userId: string, tz: string, userText: string): Promis
     const response = await createTurn(messages, model, useFallbacks);
 
     if (response.stop_reason === "refusal") {
-      return { text: "No puedo ayudarte con eso, Javier. ¿Lo intentamos de otra forma?", actions };
+      return { text: `No puedo ayudarte con eso, ${name}. ¿Lo intentamos de otra forma?`, actions };
     }
 
     const toolUses = response.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
