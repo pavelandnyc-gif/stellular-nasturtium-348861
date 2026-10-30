@@ -13,6 +13,7 @@ export const PATCH = api(async (req, { user, profile }) => {
       timezone: zZone.optional(),
       summary_enabled: z.boolean().optional(),
       summary_time: zTime.optional(),
+      voice_id: z.string().regex(/^[A-Za-z0-9]{10,40}$/).nullable().optional(),
     }),
   );
   const updated = await updateProfile(user.id, input);

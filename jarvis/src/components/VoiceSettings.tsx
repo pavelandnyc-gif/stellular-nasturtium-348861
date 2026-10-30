@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { VoicePicker } from "./VoicePicker";
 import { loadVoicePrefs, pickVoice, saveVoicePrefs, spanishVoices, speak, speechSupported, voicesReady, type VoicePrefs } from "./voice";
 
 interface Premium {
@@ -57,6 +58,7 @@ export function VoiceSettings({ name }: { name: string }) {
                     : "● La voz premium aún no está configurada en el servidor (falta ELEVENLABS_API_KEY). Mientras tanto se usa la voz del iPhone."}
               </p>
             )}
+            {prefs.engine === "premium" && premium?.enabled && <VoicePicker name={name} />}
             <label className="flex items-center justify-between gap-3 text-sm">
               <span>
                 Saludarme en voz alta al abrir

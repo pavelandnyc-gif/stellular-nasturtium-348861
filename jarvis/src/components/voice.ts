@@ -170,6 +170,33 @@ export function premiumAvailable(): Promise<boolean> {
   return premium;
 }
 
+/** Olvida los audios ya generados (al cambiar de voz). */
+export function clearAudioCache() {
+  cache.forEach((url) => URL.revokeObjectURL(url));
+  cache.clear();
+}
+
+/** Genera y reproduce una frase con una voz concreta (para el probador de voces). */
+export async function previewVoice(text: string, voiceId: string, onEnd?: () => void): Promise<boolean> {
+  const key = `${voiceId}::${text}`;
+  let url = cache.get(key) ?? null;
+  if (!url) {
+    try {
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, voiceId }),
+      });
+      if (!res.ok) return false;
+      url = URL.createObjectURL(await res.blob());
+      cache.set(key, url);
+    } catch {
+      return false;
+    }
+  }
+  return playUrl(url, loadVoicePrefs(), undefined, onEnd).started;
+}
+
 async function fetchAudio(text: string): Promise<string | null> {
   const hit = cache.get(text);
   if (hit) return hit;
