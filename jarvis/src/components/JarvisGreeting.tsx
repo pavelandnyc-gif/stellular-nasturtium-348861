@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { loadVoicePrefs, speak, speechSupported, stopSpeaking, voicesReady } from "./voice";
+import { loadVoicePrefs, prepare, speak, speechSupported, stopSpeaking, unlockAudio, voicesReady } from "./voice";
 
 const LAST_KEY = "jarvis.lastGreeting";
 const REPEAT_AFTER_MS = 20 * 60_000; // vuelve a saludar si pasaron 20 min desde el último saludo
@@ -59,6 +59,7 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
     let cancelled = false;
     const onTap = () => {
       cleanup();
+      unlockAudio();
       if (!cancelled) say();
     };
     const cleanup = () => {
@@ -66,6 +67,8 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
       document.removeEventListener("click", onTap);
     };
     voicesReady().then(async () => {
+      // Genera el audio premium por adelantado: así, al tocar, suena al instante.
+      await prepare(textRef.current);
       if (cancelled) return;
       const ok = await say();
       if (!ok && !cancelled) {

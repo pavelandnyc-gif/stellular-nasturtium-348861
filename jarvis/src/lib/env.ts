@@ -29,6 +29,11 @@ export const env = {
   vapidPrivate: () => clean(process.env.VAPID_PRIVATE_KEY),
   vapidSubject: () => clean(process.env.VAPID_SUBJECT) ?? "mailto:jarvis@example.com",
   cronSecret: () => clean(process.env.CRON_SECRET),
+  elevenKey: () => clean(process.env.ELEVENLABS_API_KEY),
+  // Voz por defecto: "George" (británico, cálido y elegante), de la biblioteca de ElevenLabs.
+  elevenVoice: () => clean(process.env.ELEVENLABS_VOICE_ID) ?? "JBFqnCBsd6RMkjVDRZzb",
+  elevenModel: () => clean(process.env.ELEVENLABS_MODEL) ?? "eleven_multilingual_v2",
+  elevenMonthlyLimit: () => Number(clean(process.env.ELEVENLABS_MONTHLY_CHAR_LIMIT)) || 25000,
 };
 
 export type AuthMode = "supabase" | "local" | "none";

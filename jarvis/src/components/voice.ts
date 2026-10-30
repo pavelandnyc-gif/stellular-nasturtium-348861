@@ -4,6 +4,7 @@
 // Las preferencias se guardan en este dispositivo, porque cada equipo tiene sus voces.
 
 export interface VoicePrefs {
+  engine: "premium" | "device"; // premium = ElevenLabs (si está configurada); device = voz del iPhone
   greet: boolean; // saludar en voz alta al abrir
   replies: "voice" | "always" | "never"; // leer respuestas: solo si hablaste, siempre o nunca
   voiceName: string | null;
@@ -11,7 +12,7 @@ export interface VoicePrefs {
 }
 
 const KEY = "jarvis.voice";
-const DEFAULTS: VoicePrefs = { greet: true, replies: "voice", voiceName: null, rate: 1 };
+const DEFAULTS: VoicePrefs = { engine: "premium", greet: true, replies: "voice", voiceName: null, rate: 1 };
 
 export function loadVoicePrefs(): VoicePrefs {
   try {
@@ -82,7 +83,7 @@ export interface SpeakHandle {
   done: Promise<void>;
 }
 
-export function speak(text: string, prefs = loadVoicePrefs(), onStart?: () => void, onEnd?: () => void): SpeakHandle {
+function speakDevice(text: string, prefs: VoicePrefs, onStart?: () => void, onEnd?: () => void): SpeakHandle {
   if (!speechSupported() || !text) return { started: Promise.resolve(false), done: Promise.resolve() };
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(clean(text));
@@ -112,4 +113,133 @@ export function speak(text: string, prefs = loadVoicePrefs(), onStart?: () => vo
 
 export function stopSpeaking() {
   if (speechSupported()) speechSynthesis.cancel();
+  if (audioEl) {
+    audioEl.pause();
+    audioEl.onended = null;
+  }
+}
+
+// ── Voz premium (ElevenLabs, generada en el servidor) ───────────────────────
+// iOS solo deja reproducir audio después de un toque. El truco: el primer toque
+// en la app "desbloquea" un único reproductor, que luego se reutiliza siempre.
+
+let audioEl: HTMLAudioElement | null = null;
+let premium: Promise<boolean> | null = null;
+const cache = new Map<string, string>(); // texto → audio ya generado (no se paga dos veces)
+const SILENCE =
+  "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+
+function player() {
+  if (!audioEl) {
+    audioEl = new Audio();
+    audioEl.setAttribute("playsinline", "");
+    audioEl.preload = "auto";
+  }
+  return audioEl;
+}
+
+/** Llamar dentro de un toque del usuario: deja el reproductor listo para sonar después. */
+export function unlockAudio() {
+  const a = player();
+  if (a.dataset.unlocked) return;
+  a.src = SILENCE;
+  a.play()
+    .then(() => (a.dataset.unlocked = "1"))
+    .catch(() => {});
+  if (speechSupported()) speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+}
+
+/** Instala el desbloqueo en el primer toque de cualquier pantalla. */
+export function installAudioUnlock() {
+  const on = () => {
+    unlockAudio();
+    document.removeEventListener("touchend", on);
+    document.removeEventListener("click", on);
+  };
+  document.addEventListener("touchend", on);
+  document.addEventListener("click", on);
+}
+
+export function premiumAvailable(): Promise<boolean> {
+  if (!premium) {
+    premium = fetch("/api/tts")
+      .then((r) => (r.ok ? r.json() : { enabled: false }))
+      .then((d) => !!d.enabled && (d.remaining ?? 1) > 0)
+      .catch(() => false);
+  }
+  return premium;
+}
+
+async function fetchAudio(text: string): Promise<string | null> {
+  const hit = cache.get(text);
+  if (hit) return hit;
+  try {
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: clean(text).slice(0, 800) }),
+    });
+    if (!res.ok) {
+      if (res.status === 429 || res.status === 503) premium = Promise.resolve(false); // tope alcanzado: voz del iPhone
+      return null;
+    }
+    const url = URL.createObjectURL(await res.blob());
+    cache.set(text, url);
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+/** Pre-genera el audio (por ejemplo, el saludo) para que suene al instante al tocar. */
+export async function prepare(text: string, prefs = loadVoicePrefs()) {
+  if (prefs.engine === "premium" && (await premiumAvailable())) await fetchAudio(text);
+}
+
+function playUrl(url: string, prefs: VoicePrefs, onStart?: () => void, onEnd?: () => void): SpeakHandle {
+  const a = player();
+  if (speechSupported()) speechSynthesis.cancel();
+  a.pause();
+  a.src = url;
+  a.playbackRate = prefs.rate;
+  let resolveDone: () => void = () => {};
+  const done = new Promise<void>((r) => (resolveDone = r));
+  a.onended = a.onerror = () => {
+    resolveDone();
+    onEnd?.();
+  };
+  const started = a
+    .play()
+    .then(() => {
+      a.dataset.unlocked = "1";
+      onStart?.();
+      return true;
+    })
+    .catch(() => {
+      resolveDone();
+      onEnd?.();
+      return false;
+    });
+  return { started, done };
+}
+
+/**
+ * Habla con la voz elegida. Si el audio premium ya está listo, empieza al instante
+ * (importante en iOS: así funciona dentro del mismo toque). Si la voz premium no
+ * está disponible o falla, usa la voz del iPhone.
+ */
+export function speak(text: string, prefs = loadVoicePrefs(), onStart?: () => void, onEnd?: () => void): SpeakHandle {
+  if (!text) return { started: Promise.resolve(false), done: Promise.resolve() };
+  const cached = cache.get(text);
+  if (prefs.engine === "premium" && cached) return playUrl(cached, prefs, onStart, onEnd);
+  if (prefs.engine !== "premium") return speakDevice(text, prefs, onStart, onEnd);
+
+  let inner: SpeakHandle | null = null;
+  const started = (async () => {
+    const url = (await premiumAvailable()) ? await fetchAudio(text) : null;
+    inner = url ? playUrl(url, prefs, onStart, onEnd) : speakDevice(text, prefs, onStart, onEnd);
+    return inner.started;
+  })();
+  const done = started.then(() => inner?.done);
+  return { started, done: done.then(() => undefined) };
 }
