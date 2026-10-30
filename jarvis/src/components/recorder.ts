@@ -4,7 +4,7 @@
 // empieza a escuchar, nota cuándo hablas y corta solo cuando haces una pausa.
 
 export interface Recording {
-  blob: Blob | null; // null si no se detectó voz
+  blob: Blob | null; // audio grabado (puede no tener voz si reason = "no-speech")
   reason: "silence" | "manual" | "no-speech" | "max";
 }
 
@@ -13,6 +13,8 @@ export interface Recorder {
   cancel(): void; // descarta
   result: Promise<Recording>;
   level: () => number; // volumen actual 0..1 (para animar el reactor)
+  autoStop: boolean; // false si el iPhone no permitió medir el volumen: hay que tocar para enviar
+  mime: string;
 }
 
 const SILENCE_MS = 1300; // pausa que indica que terminaste
@@ -20,6 +22,22 @@ const NO_SPEECH_MS = 7000; // si no dices nada en 7 s, se cierra
 const MAX_MS = 30_000;
 
 let shared: MediaStream | null = null;
+let audioCtx: AudioContext | null = null;
+
+/**
+ * Llamar DENTRO del toque del usuario: en iPhone el analizador de audio solo
+ * funciona si se activa en ese mismo momento.
+ */
+export function primeAudioContext() {
+  try {
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!audioCtx || audioCtx.state === "closed") audioCtx = new Ctx();
+    if (audioCtx.state !== "running") audioCtx.resume().catch(() => {});
+  } catch {
+    audioCtx = null;
+  }
+  return audioCtx;
+}
 
 /** Abre el micrófono (pide permiso la primera vez). Se reutiliza durante la conversación. */
 export async function openMic(): Promise<MediaStream> {
@@ -52,13 +70,22 @@ export function record(stream: MediaStream): Recorder {
   const chunks: Blob[] = [];
   rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
 
-  const Ctx = window.AudioContext || (window as any).webkitAudioContext;
-  const ctx: AudioContext = new Ctx();
-  const src = ctx.createMediaStreamSource(stream);
-  const analyser = ctx.createAnalyser();
-  analyser.fftSize = 1024;
-  src.connect(analyser);
-  const buf = new Float32Array(analyser.fftSize);
+  const ctx = audioCtx ?? primeAudioContext();
+  let analyser: AnalyserNode | null = null;
+  let src: MediaStreamAudioSourceNode | null = null;
+  try {
+    if (ctx) {
+      src = ctx.createMediaStreamSource(stream);
+      analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      src.connect(analyser);
+    }
+  } catch {
+    analyser = null;
+  }
+  const buf = new Float32Array(1024);
+  // Si el medidor de volumen no corre, no se puede detectar el silencio: se envía al tocar.
+  const vadOk = () => !!analyser && ctx?.state === "running";
 
   let current = 0;
   let spoke = false;
@@ -71,14 +98,30 @@ export function record(stream: MediaStream): Recorder {
   const result = new Promise<Recording>((resolve) => {
     rec.onstop = () => {
       clearInterval(timer);
-      src.disconnect();
-      ctx.close().catch(() => {});
-      if (cancelled || !spoke) return resolve({ blob: null, reason: cancelled ? "manual" : "no-speech" });
-      resolve({ blob: new Blob(chunks, { type: rec.mimeType || mime || "audio/mp4" }), reason });
+      try {
+        src?.disconnect();
+      } catch {
+        /* */
+      }
+      const blob = chunks.length ? new Blob(chunks, { type: rec.mimeType || mime || "audio/mp4" }) : null;
+      if (cancelled) return resolve({ blob: null, reason: "manual" });
+      // Sin voz detectada se devuelve igual el audio: quien llama decide si lo envía.
+      resolve({ blob, reason: spoke ? reason : "no-speech" });
     };
   });
 
   const timer = setInterval(() => {
+    const now0 = performance.now();
+    if (!vadOk() || !analyser) {
+      // Sin medidor: se graba hasta que toques el reactor (máximo 30 s).
+      if (now0 - started > MAX_MS && rec.state !== "inactive") {
+        spoke = true;
+        reason = "max";
+        rec.stop();
+      }
+      current = 0.3 + 0.2 * Math.sin(now0 / 150);
+      return;
+    }
     analyser.getFloatTimeDomainData(buf);
     let sum = 0;
     for (const v of buf) sum += v * v;
@@ -87,7 +130,7 @@ export function record(stream: MediaStream): Recorder {
     const now = performance.now();
     // Calibra el ruido de fondo durante el primer medio segundo.
     if (now - started < 500) noiseFloor = Math.max(noiseFloor, rms * 1.5);
-    const threshold = Math.max(0.02, noiseFloor * 2);
+    const threshold = Math.max(0.012, noiseFloor * 1.8);
     if (rms > threshold) {
       spoke = true;
       lastVoice = now;
@@ -114,5 +157,9 @@ export function record(stream: MediaStream): Recorder {
     },
     result,
     level: () => current,
+    get autoStop() {
+      return vadOk();
+    },
+    mime: rec.mimeType || mime,
   };
 }

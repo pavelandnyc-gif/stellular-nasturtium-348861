@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { call } from "./fetcher";
 import { IconCheck } from "./icons";
-import { closeMic, openMic, record, recordingSupported, type Recorder } from "./recorder";
+import { closeMic, openMic, primeAudioContext, record, recordingSupported, type Recorder } from "./recorder";
+import { diag } from "./diag";
 import { toast } from "./Toast";
 import { loadVoicePrefs, prepare, speak, speechSupported, stopSpeaking, unlockAudio, voicesReady } from "./voice";
 
@@ -20,7 +21,7 @@ interface Action {
 
 const STATUS: Record<Mode, string> = {
   idle: "Toca el reactor para hablar",
-  listening: "Te escucho…",
+  listening: "Te escucho… (haz una pausa al terminar)",
   thinking: "Procesando…",
   speaking: "Jarvis está hablando · toca para interrumpir",
 };
@@ -37,12 +38,15 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
   const [heard, setHeard] = useState<string | null>(null);
   const [reply, setReply] = useState<string | null>(null);
   const [actions, setActions] = useState<Action[]>([]);
+  const [tapToSend, setTapToSend] = useState(false);
   const textRef = useRef(text);
   textRef.current = text;
   const active = useRef(false); // conversación en curso
   const recRef = useRef<Recorder | null>(null);
   const coreRef = useRef<HTMLSpanElement>(null);
   const greetedRef = useRef(false);
+  const turnsRef = useRef(0); // veces que ya te entendió en esta conversación
+  const retriesRef = useRef(0); // intentos seguidos sin entender
 
   const markGreeted = () => {
     greetedRef.current = true;
@@ -143,6 +147,7 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
     recRef.current = null;
     closeMic();
     setMode("idle");
+    setTapToSend(false);
     if (goodbye) setReply(goodbye);
   }
 
@@ -151,6 +156,10 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
     form.append("audio", blob, "voz");
     const res = await fetch("/api/stt", { method: "POST", body: form });
     const data = await res.json().catch(() => ({}));
+    diag("stt", res.ok ? `ok: "${String(data.text ?? "").slice(0, 80)}"` : `error ${res.status}: ${data.error ?? ""}`, {
+      size: blob.size,
+      type: blob.type,
+    });
     if (res.status === 401) {
       window.location.href = "/login";
       return null;
@@ -167,33 +176,55 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
     let stream: MediaStream;
     try {
       stream = await openMic();
-    } catch {
+    } catch (e) {
+      diag("mic", `getUserMedia falló: ${(e as Error).name} ${(e as Error).message}`);
       toast("Necesito permiso para usar el micrófono. Actívalo en Settings → Jarvis → Microphone.", "error");
       return endConversation();
     }
     setMode("listening");
-    const r = record(stream);
+    let r: Recorder;
+    try {
+      r = record(stream);
+    } catch (e) {
+      diag("record", `MediaRecorder falló: ${(e as Error).name} ${(e as Error).message}`);
+      toast("Este iPhone no pudo grabar audio. Usa el chat con el micrófono del teclado.", "error");
+      return endConversation();
+    }
     recRef.current = r;
+    setTapToSend(false);
+    const hintTimer = setTimeout(() => setTapToSend(!r.autoStop), 1200);
     const res = await r.result;
+    clearTimeout(hintTimer);
     recRef.current = null;
+    diag("record", `fin: ${res.reason}`, { bytes: res.blob?.size ?? 0, mime: r.mime, autoStop: r.autoStop });
     if (!active.current) return;
-    if (!res.blob) return endConversation(heard ? "Aquí estaré cuando me necesites." : undefined);
+    // Primer intento sin voz detectada: igual se envía (quizá hablaste bajito).
+    // En turnos siguientes, el silencio significa que terminaste.
+    if (!res.blob || (res.reason === "no-speech" && turnsRef.current > 0)) {
+      return endConversation(turnsRef.current ? "Aquí estaré cuando me necesites." : "No llegó audio. Toca el reactor e inténtalo de nuevo.");
+    }
 
     setMode("thinking");
     const said = await transcribe(res.blob);
     if (!active.current) return;
     if (said === null) return endConversation();
     if (!said) {
+      if (++retriesRef.current >= 2 || res.reason === "no-speech") {
+        return endConversation("No te escuché bien. Toca el reactor cuando quieras intentarlo de nuevo.");
+      }
       setReply("No te entendí bien. ¿Me lo repites?");
       return turn();
     }
+    retriesRef.current = 0;
+    turnsRef.current += 1;
     setHeard(said);
     setReply(null);
     setActions([]);
     let answer: { text: string; actions: Action[] };
     try {
       answer = (await call<{ reply: { text: string; actions: Action[] } }>("/api/chat", "POST", { message: said })).reply;
-    } catch {
+    } catch (e) {
+      diag("chat", `error: ${(e as Error).message}`);
       return endConversation();
     }
     if (!active.current) return;
@@ -203,13 +234,15 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
 
     setMode("speaking");
     const h = speak(answer.text, loadVoicePrefs());
-    await h.started;
+    const spoke = await h.started;
+    diag("speak", spoke ? "ok" : "no sonó (bloqueado o sin voz)");
     await h.done;
     if (active.current) return turn(); // sigue la conversación
   }
 
   function onReactor() {
     unlockAudio();
+    primeAudioContext(); // debe ocurrir en el mismo toque (requisito del iPhone)
     markGreeted();
     setNeedsTap(false);
     if (mode === "listening") return recRef.current?.stop();
@@ -226,6 +259,8 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
       return router.push("/jarvis");
     }
     active.current = true;
+    turnsRef.current = 0;
+    retriesRef.current = 0;
     setHeard(null);
     setReply(null);
     setActions([]);
@@ -254,7 +289,11 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
       </button>
       <p className={`mb-2 text-xs font-medium tracking-wide ${mode === "listening" ? "text-red-300" : "text-cyan-soft"}`}>
         {mode === "listening" && <span className="mr-1.5 inline-block size-2 animate-pulse rounded-full bg-bad align-middle" />}
-        {needsTap && mode === "idle" ? "Toca la pantalla para escuchar a Jarvis 🔊" : STATUS[mode]}
+        {needsTap && mode === "idle"
+          ? "Toca la pantalla para escuchar a Jarvis 🔊"
+          : mode === "listening" && tapToSend
+            ? "Te escucho… toca el reactor cuando termines"
+            : STATUS[mode]}
       </p>
 
       {showGreeting ? (
