@@ -6,6 +6,7 @@ import { call } from "./fetcher";
 import { IconCheck, IconSend } from "./icons";
 import { MicButton } from "./MicButton";
 import { QuickCapture } from "./QuickCapture";
+import { loadVoicePrefs, speak, stopSpeaking } from "./voice";
 
 interface Action {
   type: string;
@@ -49,6 +50,7 @@ function ChatInner({ configured, model, name, today }: { configured: boolean; mo
   const endRef = useRef<HTMLDivElement>(null);
   const base = useRef("");
   const sentQ = useRef(false);
+  const usedMic = useRef(false);
 
   useEffect(() => {
     call<{ messages: Msg[] }>("/api/chat")
@@ -75,6 +77,9 @@ function ChatInner({ configured, model, name, today }: { configured: boolean; mo
           ...xs.filter((x) => !x.pending),
           { id: "a" + Date.now(), role: "assistant", content: r.reply.text, actions: r.reply.actions },
         ]);
+        const prefs = loadVoicePrefs();
+        if (prefs.replies === "always" || (prefs.replies === "voice" && usedMic.current)) speak(r.reply.text, prefs);
+        usedMic.current = false;
         if (r.reply.actions.length) router.refresh();
       } catch (e) {
         setMsgs((xs) => [
@@ -132,8 +137,8 @@ function ChatInner({ configured, model, name, today }: { configured: boolean; mo
         )}
         {configured && loaded && msgs.length === 0 && (
           <div className="rise pt-6 text-center">
-            <p className="text-lg font-semibold">Hola, {name}. ¿En qué te ayudo?</p>
-            <p className="mb-4 text-sm text-muted">Escríbeme o toca el micrófono. Algunas ideas:</p>
+            <p className="text-lg font-semibold">A tus órdenes, {name}.</p>
+            <p className="mb-4 text-sm text-muted">Escríbeme o háblame con el micrófono. Por ejemplo:</p>
             <div className="flex flex-col gap-2">
               {EXAMPLES.map((e) => (
                 <button key={e} className="card px-4 py-3 text-left text-sm text-muted active:scale-[0.99]" onClick={() => send(e)}>
@@ -166,7 +171,11 @@ function ChatInner({ configured, model, name, today }: { configured: boolean; mo
           <div className="flex items-end gap-2">
             <MicButton
               onListening={(on) => {
-                if (on) base.current = text ? text + " " : "";
+                if (on) {
+                  stopSpeaking();
+                  base.current = text ? text + " " : "";
+                  usedMic.current = true;
+                }
                 setListening(on);
               }}
               onText={(t) => setText(base.current + t)}
