@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import Anthropic from "@anthropic-ai/sdk";
+import { safeEqual } from "@/lib/session";
 import { authMode, env } from "@/lib/env";
 import { createHash } from "node:crypto";
 import { parseDatabaseUrl, query, usingLocalDatabase } from "@/lib/db";
@@ -27,7 +29,7 @@ function dbFingerprint() {
 }
 
 // Diagnóstico público: solo dice SÍ/NO de cada configuración. Nunca muestra valores.
-export async function GET() {
+export async function GET(req: Request) {
   let database: string;
   try {
     await query("select 1 from jarvis.profiles limit 1");
@@ -47,6 +49,28 @@ export async function GET() {
     // Huella de 6 caracteres de la contraseña: permite comprobar cuál está puesta sin revelarla.
     dbPasswordFingerprint: dbFingerprint(),
   };
+  // Con el CRON_SECRET se puede pedir además una verificación real de la clave de IA
+  // (consulta gratuita a la lista de modelos; no genera texto ni consume créditos).
+  let aiCheck: string | undefined;
+  const secret = env.cronSecret();
+  if (new URL(req.url).searchParams.has("ai") && secret && safeEqual(req.headers.get("authorization") ?? "", `Bearer ${secret}`)) {
+    if (!env.anthropicKey()) aiCheck = "sin clave";
+    else {
+      try {
+        const m = await new Anthropic({ apiKey: env.anthropicKey(), maxRetries: 1, timeout: 15_000 }).models.retrieve(env.aiModel());
+        aiCheck = `ok: ${m.id}`;
+      } catch (e) {
+        aiCheck =
+          e instanceof Anthropic.AuthenticationError
+            ? "error: clave inválida"
+            : e instanceof Anthropic.NotFoundError
+              ? "error: el modelo no existe o la cuenta no tiene acceso"
+              : e instanceof Anthropic.PermissionDeniedError
+                ? "error: la cuenta no tiene permiso (¿falta saldo?)"
+                : `error: ${(e as { status?: number }).status ?? "conexión"}`;
+      }
+    }
+  }
   const ok = checks.database === "ok" && checks.auth === "supabase" && checks.allowedEmails > 0 && checks.push && checks.cronSecret;
-  return NextResponse.json({ ok, ...checks });
+  return NextResponse.json({ ok, ...checks, ...(aiCheck ? { aiCheck } : {}) });
 }
