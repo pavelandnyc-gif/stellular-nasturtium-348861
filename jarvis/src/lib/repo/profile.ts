@@ -10,6 +10,7 @@ export interface Profile {
   summary_enabled: boolean;
   summary_time: string;
   voice_id: string | null;
+  weather_unit: "F" | "C";
 }
 
 export async function getProfile(userId: string, email: string | null = null): Promise<Profile> {
@@ -26,14 +27,14 @@ export async function getProfile(userId: string, email: string | null = null): P
 
 export async function updateProfile(
   userId: string,
-  patch: Partial<Pick<Profile, "display_name" | "timezone" | "summary_enabled" | "summary_time" | "voice_id">>,
+  patch: Partial<Pick<Profile, "display_name" | "timezone" | "summary_enabled" | "summary_time" | "voice_id" | "weather_unit">>,
 ) {
   const p = await getProfile(userId);
   const next = { ...p, ...patch };
   const rows = await query<Profile>(
-    `update jarvis.profiles set display_name = $2, timezone = $3, summary_enabled = $4, summary_time = $5, voice_id = $6, updated_at = now()
+    `update jarvis.profiles set display_name = $2, timezone = $3, summary_enabled = $4, summary_time = $5, voice_id = $6, weather_unit = $7, updated_at = now()
      where user_id = $1 returning *`,
-    [userId, next.display_name, next.timezone, next.summary_enabled, next.summary_time, next.voice_id ?? null],
+    [userId, next.display_name, next.timezone, next.summary_enabled, next.summary_time, next.voice_id ?? null, next.weather_unit ?? "F"],
   );
   return rows[0];
 }

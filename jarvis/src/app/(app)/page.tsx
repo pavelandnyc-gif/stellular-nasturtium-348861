@@ -45,7 +45,7 @@ export default async function Home() {
         </Link>
       </header>
 
-      <JarvisGreeting text={welcome} aiReady={ai} />
+      <JarvisGreeting text={welcome} name={profile.display_name} aiReady={ai} />
 
       <Nudges />
 

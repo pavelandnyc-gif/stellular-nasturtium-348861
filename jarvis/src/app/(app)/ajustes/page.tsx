@@ -27,6 +27,7 @@ export default async function SettingsPage() {
           timezone: profile.timezone,
           summary_enabled: profile.summary_enabled,
           summary_time: profile.summary_time,
+          weather_unit: profile.weather_unit ?? "F",
         }}
         zones={zones}
       />

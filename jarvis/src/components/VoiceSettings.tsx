@@ -67,6 +67,22 @@ export function VoiceSettings({ name }: { name: string }) {
               </span>
               <input type="checkbox" className="size-6 accent-cyan-400" checked={prefs.greet} onChange={(e) => update({ greet: e.target.checked })} />
             </label>
+            <label className="flex items-center justify-between gap-3 text-sm">
+              <span>
+                Arranque del sistema al abrir
+                <br />
+                <span className="text-xs text-muted">Animación y sonido de encendido antes del saludo.</span>
+              </span>
+              <input type="checkbox" className="size-6 accent-cyan-400" checked={prefs.boot} onChange={(e) => update({ boot: e.target.checked })} />
+            </label>
+            <label className="flex items-center justify-between gap-3 text-sm">
+              <span>
+                Escucharme apenas termina de saludar
+                <br />
+                <span className="text-xs text-muted">Contestas sin tocar nada. Si no dices nada, Jarvis se retira solo.</span>
+              </span>
+              <input type="checkbox" className="size-6 accent-cyan-400" checked={prefs.autoListen} onChange={(e) => update({ autoListen: e.target.checked })} />
+            </label>
             <label className="block text-xs text-muted">
               Leer las respuestas en voz alta
               <select className="field mt-1" value={prefs.replies} onChange={(e) => update({ replies: e.target.value as VoicePrefs["replies"] })}>

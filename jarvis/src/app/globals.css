@@ -266,3 +266,91 @@ select {
   box-shadow: 0 0 30px 6px rgba(248, 113, 113, 0.5);
   transition: transform 0.08s linear;
 }
+
+/* ── Secuencia de arranque (HUD) ───────────────────────────────────────── */
+.boot {
+  padding: var(--safe-top) 16px var(--safe-bottom);
+  overflow: hidden;
+}
+.boot-grid {
+  position: absolute;
+  inset: -50%;
+  background-image:
+    linear-gradient(rgba(34, 211, 238, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 211, 238, 0.06) 1px, transparent 1px);
+  background-size: 28px 28px;
+  transform: perspective(500px) rotateX(55deg) translateY(10%);
+  mask-image: radial-gradient(circle at 50% 40%, black 20%, transparent 65%);
+}
+.boot-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 120px;
+  background: linear-gradient(180deg, transparent, rgba(34, 211, 238, 0.12), transparent);
+  animation: boot-scan 2.4s linear infinite;
+}
+@keyframes boot-scan {
+  from {
+    top: -120px;
+  }
+  to {
+    top: 100%;
+  }
+}
+.boot-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 2px solid rgba(103, 232, 249, 0.35);
+}
+.boot-ring-1 {
+  border-width: 3px;
+  border-color: rgba(103, 232, 249, 0.85) transparent rgba(59, 130, 246, 0.85) transparent;
+  animation: reactor-spin 6s linear infinite;
+}
+.boot-ring-2 {
+  inset: 28px;
+  border-style: dashed;
+  animation: reactor-spin 10s linear infinite reverse;
+}
+.boot-ring-3 {
+  inset: 54px;
+  border-color: transparent rgba(34, 211, 238, 0.8) transparent rgba(34, 211, 238, 0.8);
+  animation: reactor-spin 4s linear infinite;
+}
+.boot-core {
+  opacity: 0.25;
+  transform: scale(0.6);
+  transition: opacity 1.2s ease, transform 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: none;
+}
+.boot-core-on {
+  opacity: 1;
+  transform: scale(1.05);
+}
+.boot-power .boot-ring-1 {
+  animation-duration: 1.4s;
+}
+.boot-power .boot-ring-3 {
+  animation-duration: 1s;
+}
+.boot-line {
+  animation: rise 0.3s ease both;
+}
+.boot-out {
+  animation: boot-out 0.5s ease forwards;
+}
+@keyframes boot-out {
+  to {
+    opacity: 0;
+    transform: scale(1.04);
+    visibility: hidden;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .boot-scan,
+  .boot-ring {
+    animation: none !important;
+  }
+}
