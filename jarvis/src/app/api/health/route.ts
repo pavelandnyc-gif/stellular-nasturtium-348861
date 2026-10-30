@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { safeEqual } from "@/lib/session";
 import { checkTts } from "@/lib/tts";
+import { TOOL_DEFS } from "@/lib/ai/tools";
 import { authMode, env } from "@/lib/env";
 import { createHash } from "node:crypto";
 import { parseDatabaseUrl, query, usingLocalDatabase } from "@/lib/db";
@@ -59,15 +60,24 @@ export async function GET(req: Request) {
     if (!env.anthropicKey()) aiCheck = "sin clave";
     else {
       try {
-        const m = await new Anthropic({ apiKey: env.anthropicKey(), maxRetries: 1, timeout: 15_000 }).models.retrieve(env.aiModel());
-        aiCheck = `ok: ${m.id}`;
+        const client = new Anthropic({ apiKey: env.anthropicKey(), maxRetries: 1, timeout: 20_000 });
+        const m = await client.models.retrieve(env.aiModel());
+        // Valida también las herramientas de Jarvis contra la API (contar tokens no genera texto).
+        const count = await client.beta.messages.countTokens({
+          model: env.aiModel(),
+          tools: TOOL_DEFS,
+          messages: [{ role: "user", content: "Hola" }],
+        });
+        aiCheck = `ok: ${m.id} · herramientas válidas (${count.input_tokens} tokens)`;
       } catch (e) {
         aiCheck =
           e instanceof Anthropic.AuthenticationError
             ? "error: clave inválida"
             : e instanceof Anthropic.NotFoundError
               ? "error: el modelo no existe o la cuenta no tiene acceso"
-              : e instanceof Anthropic.PermissionDeniedError
+              : e instanceof Anthropic.BadRequestError
+                ? `error: ${e.message.slice(0, 200)}`
+                : e instanceof Anthropic.PermissionDeniedError
                 ? "error: la cuenta no tiene permiso (¿falta saldo?)"
                 : `error: ${(e as { status?: number }).status ?? "conexión"}`;
       }

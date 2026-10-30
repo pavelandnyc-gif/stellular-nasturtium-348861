@@ -60,7 +60,11 @@ const uuid = z.string().uuid("Identificador inválido");
 
 const PRIORITY_NUM = { alta: 1, media: 2, baja: 3 } as const;
 
-const nullable = (type: string, extra: Record<string, unknown> = {}) => ({ type: [type, "null"], ...extra });
+// Campo opcional en formato estricto: "valor o null" con anyOf (las listas de tipos no se aceptan con enum).
+const nullable = (type: string, extra: { description?: string; enum?: string[] } = {}) => {
+  const { description, ...rest } = extra;
+  return { ...(description ? { description } : {}), anyOf: [{ type, ...rest }, { type: "null" }] };
+};
 
 function toolDef(name: string, description: string, properties: Record<string, unknown>): Anthropic.Beta.BetaTool {
   return {
@@ -106,7 +110,7 @@ export const TOOL_DEFS: Anthropic.Beta.BetaTool[] = [
       title: { type: "string", description: "Acción breve en infinitivo, p. ej. 'Llamar a mamá'." },
       date: nullable("string", { description: "AAAA-MM-DD en la zona horaria de la persona, o null si no tiene fecha." }),
       time: nullable("string", { description: "HH:MM en 24 h, o null si no tiene hora." }),
-      priority: nullable("string", { enum: ["alta", "media", "baja", null] }),
+      priority: nullable("string", { enum: ["alta", "media", "baja"] }),
       repeat: repeatSchema,
       notes: nullable("string"),
     },
@@ -125,7 +129,7 @@ export const TOOL_DEFS: Anthropic.Beta.BetaTool[] = [
       time: nullable("string", { description: "Para reschedule: nueva hora HH:MM (null = sin cambio)." }),
       snooze_minutes: nullable("integer", { description: "Para snooze: minutos a posponer." }),
       title: nullable("string"),
-      priority: nullable("string", { enum: ["alta", "media", "baja", null] }),
+      priority: nullable("string", { enum: ["alta", "media", "baja"] }),
     },
   ),
   toolDef(
@@ -150,7 +154,7 @@ export const TOOL_DEFS: Anthropic.Beta.BetaTool[] = [
     title: nullable("string", { description: "Título de la tarea; null para usar el texto de la idea." }),
     date: nullable("string"),
     time: nullable("string"),
-    priority: nullable("string", { enum: ["alta", "media", "baja", null] }),
+    priority: nullable("string", { enum: ["alta", "media", "baja"] }),
   }),
 ];
 

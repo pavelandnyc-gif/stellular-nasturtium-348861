@@ -11,7 +11,8 @@ import { QuickCapture } from "@/components/QuickCapture";
 import { Nudges } from "@/components/Nudges";
 import { IconBell, IconGear } from "@/components/icons";
 import { JarvisGreeting } from "@/components/JarvisGreeting";
-import { buildGreeting } from "@/lib/greeting";
+import { buildGreeting, hourlyRandom } from "@/lib/greeting";
+import { nowIn } from "@/lib/time";
 
 export default async function Home() {
   const { user, profile, tz } = await pageContext();
@@ -32,6 +33,7 @@ export default async function Home() {
     overdueCount: overdue.length,
     pendingHabits: todaysHabits.filter((h) => !h.doneToday).map((h) => h.name),
     doneHabits: todaysHabits.filter((h) => h.doneToday).length,
+    random: hourlyRandom(`${user.id}:${todayIso}:${nowIn(tz).hour}`),
   });
 
   return (
