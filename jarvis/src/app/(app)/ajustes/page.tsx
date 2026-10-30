@@ -17,7 +17,7 @@ export default async function SettingsPage() {
   return (
     <main className="page space-y-6">
       <header className="flex items-center gap-2">
-        <Link href="/" className="-ml-2 grid size-10 place-items-center text-muted" aria-label="Volver"><IconBack /></Link>
+        <Link href="/hoy" className="-ml-2 grid size-10 place-items-center text-muted" aria-label="Volver"><IconBack /></Link>
         <h1 className="text-2xl font-bold">Ajustes</h1>
       </header>
 

@@ -1,6 +1,7 @@
 import "server-only";
 import { query } from "./db";
 import { env } from "./env";
+import { forSpeech } from "./speech";
 
 // Voz premium de Jarvis con ElevenLabs. La clave vive solo en el servidor.
 // Se cuenta cada carácter enviado y, al llegar al tope mensual, la app vuelve
@@ -47,25 +48,41 @@ async function release(n: number) {
 
 export const VOICE_ID_RE = /^[A-Za-z0-9]{10,40}$/;
 
-export async function synthesize(text: string, voiceId?: string | null): Promise<ArrayBuffer> {
-  const clean = text.slice(0, MAX_TTS_CHARS);
+export const TTS_MODELS = ["eleven_multilingual_v2", "eleven_v3", "eleven_flash_v2_5"] as const;
+export type TtsModel = (typeof TTS_MODELS)[number];
+
+function voiceSettings(model: string) {
+  // eleven_v3 solo acepta estabilidad 0, 0.5 o 1 ("creativa", "natural", "robusta").
+  if (model.includes("v3")) return { stability: 0.5 };
+  // Menos estabilidad + algo de estilo = entonación más viva y menos monótona.
+  return { stability: 0.4, similarity_boost: 0.8, style: 0.3, use_speaker_boost: true };
+}
+
+async function callTts(text: string, voice: string, model: string) {
+  return fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voice)}?output_format=mp3_44100_128`, {
+    method: "POST",
+    headers: { "xi-api-key": env.elevenKey()!, "Content-Type": "application/json", Accept: "audio/mpeg" },
+    body: JSON.stringify({
+      text,
+      model_id: model,
+      language_code: model.includes("multilingual_v2") ? undefined : "es",
+      voice_settings: voiceSettings(model),
+    }),
+    signal: AbortSignal.timeout(25_000),
+  });
+}
+
+export async function synthesize(text: string, voiceId?: string | null, model?: string | null): Promise<ArrayBuffer> {
+  const clean = forSpeech(text).slice(0, MAX_TTS_CHARS);
   const voice = voiceId && VOICE_ID_RE.test(voiceId) ? voiceId : env.elevenVoice();
+  const chosen = model && (TTS_MODELS as readonly string[]).includes(model) ? model : env.elevenModel();
   await reserve(clean.length);
   try {
-    const res = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voice)}?output_format=mp3_44100_128`,
-      {
-        method: "POST",
-        headers: { "xi-api-key": env.elevenKey()!, "Content-Type": "application/json", Accept: "audio/mpeg" },
-        body: JSON.stringify({
-          text: clean,
-          model_id: env.elevenModel(),
-          language_code: env.elevenModel().includes("multilingual_v2") ? undefined : "es",
-          voice_settings: { stability: 0.55, similarity_boost: 0.75, style: 0.15, use_speaker_boost: true },
-        }),
-        signal: AbortSignal.timeout(20_000),
-      },
-    );
+    let res = await callTts(clean, voice, chosen);
+    // Si el modelo elegido no está disponible para esta voz o cuenta, se usa el de siempre.
+    if (!res.ok && res.status >= 400 && res.status < 500 && res.status !== 401 && chosen !== env.elevenModel()) {
+      res = await callTts(clean, voice, env.elevenModel());
+    }
     if (!res.ok) throw new Error(`ElevenLabs respondió ${res.status}: ${(await res.text()).slice(0, 200)}`);
     return await res.arrayBuffer();
   } catch (e) {

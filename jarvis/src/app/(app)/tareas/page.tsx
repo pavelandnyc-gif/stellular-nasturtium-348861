@@ -22,7 +22,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
 
   const header = (
     <header className="mb-4 flex items-center gap-2">
-      <Link href="/" className="-ml-2 grid size-10 place-items-center text-muted" aria-label="Volver"><IconBack /></Link>
+      <Link href="/hoy" className="-ml-2 grid size-10 place-items-center text-muted" aria-label="Volver"><IconBack /></Link>
       <h1 className="text-2xl font-bold">Pendientes</h1>
     </header>
   );

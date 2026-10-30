@@ -1,11 +1,13 @@
 "use client";
 import { diag } from "./diag";
+import { forSpeech } from "@/lib/speech";
 
 // Voz de Jarvis con la síntesis de voz del propio iPhone (gratis, sin internet).
 // Las preferencias se guardan en este dispositivo, porque cada equipo tiene sus voces.
 
 export interface VoicePrefs {
   engine: "premium" | "device"; // premium = ElevenLabs (si está configurada); device = voz del iPhone
+  style: "natural" | "expressive"; // expresiva = modelo eleven_v3 (más emoción; experimental)
   greet: boolean; // saludar en voz alta al abrir
   boot: boolean; // animación y sonido de arranque
   autoListen: boolean; // escuchar apenas termina el saludo
@@ -15,7 +17,7 @@ export interface VoicePrefs {
 }
 
 const KEY = "jarvis.voice";
-const DEFAULTS: VoicePrefs = { engine: "premium", greet: true, boot: true, autoListen: true, replies: "voice", voiceName: null, rate: 1 };
+const DEFAULTS: VoicePrefs = { engine: "premium", style: "natural", greet: true, boot: true, autoListen: true, replies: "voice", voiceName: null, rate: 1 };
 
 export function loadVoicePrefs(): VoicePrefs {
   try {
@@ -74,7 +76,7 @@ export function voicesReady(): Promise<void> {
 }
 
 function clean(text: string) {
-  return text
+  return forSpeech(text)
     .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, "")
     .replace(/\[[^\]]*\]/g, "")
     .replace(/\s+/g, " ")
@@ -194,7 +196,7 @@ export async function previewVoice(text: string, voiceId: string, onEnd?: () => 
       const res = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, voiceId }),
+        body: JSON.stringify({ text, voiceId, model: loadVoicePrefs().style === "expressive" ? "eleven_v3" : undefined }),
       });
       if (!res.ok) return false;
       url = URL.createObjectURL(await res.blob());
@@ -213,7 +215,7 @@ async function fetchAudio(text: string): Promise<string | null> {
     const res = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: clean(text).slice(0, 800) }),
+      body: JSON.stringify({ text: text.slice(0, 800), model: loadVoicePrefs().style === "expressive" ? "eleven_v3" : undefined }),
     });
     if (!res.ok) {
       if (res.status === 429 || res.status === 503) premium = Promise.resolve(false); // tope alcanzado: voz del iPhone

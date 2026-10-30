@@ -199,7 +199,7 @@ export async function syncSummary(userId: string, now = new Date()) {
       fire_at: at,
       title: "Tu resumen del día",
       body: "Toca para ver tu día.", // el texto real se arma al enviarlo, con tus datos de ese momento
-      url: "/",
+      url: "/hoy",
     },
   ]);
 }

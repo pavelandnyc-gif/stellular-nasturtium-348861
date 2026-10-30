@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { VoicePicker } from "./VoicePicker";
-import { loadVoicePrefs, pickVoice, saveVoicePrefs, spanishVoices, speak, speechSupported, voicesReady, type VoicePrefs } from "./voice";
+import { clearAudioCache, loadVoicePrefs, pickVoice, saveVoicePrefs, spanishVoices, speak, speechSupported, voicesReady, type VoicePrefs } from "./voice";
 
 interface Premium {
   enabled: boolean;
@@ -57,6 +57,22 @@ export function VoiceSettings({ name }: { name: string }) {
                     ? `● Voz premium activa · usados este mes: ${premium.used?.toLocaleString("es")} de ${premium.limit?.toLocaleString("es")} caracteres. Al llegar al tope, Jarvis usa la voz del iPhone hasta el mes siguiente.`
                     : "● La voz premium aún no está configurada en el servidor (falta ELEVENLABS_API_KEY). Mientras tanto se usa la voz del iPhone."}
               </p>
+            )}
+            {prefs.engine === "premium" && premium?.enabled && (
+              <label className="block text-xs text-muted">
+                Estilo de voz
+                <select
+                  className="field mt-1"
+                  value={prefs.style}
+                  onChange={(e) => {
+                    clearAudioCache(); // los audios ya generados eran del otro estilo
+                    update({ style: e.target.value as VoicePrefs["style"] });
+                  }}
+                >
+                  <option value="natural">Natural (recomendado)</option>
+                  <option value="expressive">Expresiva · más emoción (experimental)</option>
+                </select>
+              </label>
             )}
             {prefs.engine === "premium" && premium?.enabled && <VoicePicker name={name} />}
             <label className="flex items-center justify-between gap-3 text-sm">
