@@ -6,7 +6,7 @@ import { LOCAL_COOKIE, verifyLocalSession } from "@/lib/session";
 // /login a quien no la tenga. La autorización real se repite en cada ruta del
 // servidor (requireUser), así que esto es solo la primera barrera.
 
-const PUBLIC_PATHS = ["/login", "/instalar", "/api/cron/", "/api/push/receipt", "/api/auth/"];
+const PUBLIC_PATHS = ["/login", "/instalar", "/api/cron/", "/api/push/receipt", "/api/auth/", "/api/health"];
 
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
