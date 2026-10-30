@@ -33,6 +33,7 @@ export const env = {
   // Voz por defecto: "George" (británico, cálido y elegante), de la biblioteca de ElevenLabs.
   elevenVoice: () => clean(process.env.ELEVENLABS_VOICE_ID) ?? "JBFqnCBsd6RMkjVDRZzb",
   elevenModel: () => clean(process.env.ELEVENLABS_MODEL) ?? "eleven_multilingual_v2",
+  elevenSttModel: () => clean(process.env.ELEVENLABS_STT_MODEL) ?? "scribe_v2",
   elevenMonthlyLimit: () => Number(clean(process.env.ELEVENLABS_MONTHLY_CHAR_LIMIT)) || 25000,
 };
 
