@@ -7,6 +7,7 @@ import { COMMON_ZONES } from "@/lib/time";
 import { SettingsForm } from "@/components/SettingsForm";
 import { PushPanel } from "@/components/PushPanel";
 import { LogoutButton } from "@/components/LogoutButton";
+import { VoiceSettings } from "@/components/VoiceSettings";
 import { IconBack } from "@/components/icons";
 
 export default async function SettingsPage() {
@@ -29,6 +30,8 @@ export default async function SettingsPage() {
         }}
         zones={zones}
       />
+
+      <VoiceSettings name={profile.display_name} />
 
       <section id="avisos" className="scroll-mt-6">
         <h2 className="mb-2 text-lg font-semibold">Notificaciones</h2>

@@ -4,12 +4,14 @@ import { listTasks, viewTask } from "@/lib/repo/tasks";
 import { listHabits } from "@/lib/repo/habits";
 import { upcomingAlerts } from "@/lib/scheduler";
 import { aiConfigured } from "@/lib/ai/agent";
-import { formatFull, formatInstant, greeting, todayIn } from "@/lib/time";
+import { formatFull, formatInstant, todayIn } from "@/lib/time";
 import { TaskItem } from "@/components/TaskItem";
 import { HabitCheck } from "@/components/HabitCheck";
 import { QuickCapture } from "@/components/QuickCapture";
 import { Nudges } from "@/components/Nudges";
-import { IconBell, IconChat, IconGear } from "@/components/icons";
+import { IconBell, IconGear } from "@/components/icons";
+import { JarvisGreeting } from "@/components/JarvisGreeting";
+import { buildGreeting } from "@/lib/greeting";
 
 export default async function Home() {
   const { user, profile, tz } = await pageContext();
@@ -21,42 +23,29 @@ export default async function Home() {
   ]);
   const tasks = [...overdue, ...today].map((t) => viewTask(t, tz));
   const todaysHabits = habits.filter((h) => h.dueToday);
-  const pendingHabits = todaysHabits.filter((h) => !h.doneToday).length;
   const ai = aiConfigured();
   const todayIso = todayIn(tz);
+  const welcome = buildGreeting({
+    name: profile.display_name,
+    tz,
+    todayTasks: today.map((t) => ({ title: t.title, due_time: t.due_time })),
+    overdueCount: overdue.length,
+    pendingHabits: todaysHabits.filter((h) => !h.doneToday).map((h) => h.name),
+    doneHabits: todaysHabits.filter((h) => h.doneToday).length,
+  });
 
   return (
     <main className="page">
-      <header className="mb-5 flex items-start justify-between">
-        <div className="rise">
-          <p className="text-sm capitalize text-muted">{formatFull(todayIso, null).replace(/ de \d{4}$/, "")}</p>
-          <h1 className="text-[28px] font-bold tracking-tight">
-            {greeting(tz)}, <span className="bg-gradient-to-r from-cyan-soft to-azure bg-clip-text text-transparent">{profile.display_name}</span>
-          </h1>
-          <p className="mt-1 text-sm text-muted">
-            {tasks.length === 0 && pendingHabits === 0
-              ? "Día despejado. ¿Algo que quieras anotar?"
-              : `${tasks.length} ${tasks.length === 1 ? "pendiente" : "pendientes"} y ${pendingHabits} ${pendingHabits === 1 ? "hábito" : "hábitos"} por hoy.`}
-          </p>
-        </div>
+      <header className="mb-1 flex items-center justify-between">
+        <p className="text-sm text-muted first-letter:uppercase">{formatFull(todayIso, null).replace(/ de \d{4}$/, "")}</p>
         <Link href="/ajustes" aria-label="Ajustes" className="grid size-11 place-items-center rounded-full bg-white/5 text-muted">
           <IconGear className="size-6" />
         </Link>
       </header>
 
-      <Nudges />
+      <JarvisGreeting text={welcome} aiReady={ai} />
 
-      <Link href="/jarvis" className="rise card mb-5 flex items-center gap-3 p-4">
-        <span className="grid size-11 place-items-center rounded-full bg-gradient-to-br from-cyan to-azure text-ink">
-          <IconChat className="size-6" />
-        </span>
-        <span className="flex-1">
-          <span className="block font-semibold">Hablar con Jarvis</span>
-          <span className="block text-xs text-muted">
-            {ai ? "“Recuérdame llamar a mi mamá mañana a las diez”" : "La IA requiere configuración · usa la captura rápida"}
-          </span>
-        </span>
-      </Link>
+      <Nudges />
 
       <section className="mb-6">
         <div className="mb-1 flex items-baseline justify-between">
