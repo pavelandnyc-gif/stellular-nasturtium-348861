@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { safeEqual } from "@/lib/session";
+import { checkTts } from "@/lib/tts";
 import { authMode, env } from "@/lib/env";
 import { createHash } from "node:crypto";
 import { parseDatabaseUrl, query, usingLocalDatabase } from "@/lib/db";
@@ -72,6 +73,7 @@ export async function GET(req: Request) {
       }
     }
   }
+  const voiceCheck = aiCheck !== undefined && env.elevenKey() ? await checkTts() : undefined;
   const ok = checks.database === "ok" && checks.auth === "supabase" && checks.allowedEmails > 0 && checks.push && checks.cronSecret;
-  return NextResponse.json({ ok, ...checks, ...(aiCheck ? { aiCheck } : {}) });
+  return NextResponse.json({ ok, ...checks, ...(aiCheck ? { aiCheck } : {}), ...(voiceCheck ? { voiceCheck } : {}) });
 }

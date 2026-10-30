@@ -45,12 +45,15 @@ async function release(n: number) {
   await query("update jarvis.tts_usage set chars = greatest(0, chars - $2) where month = $1", [month(), n]);
 }
 
-export async function synthesize(text: string): Promise<ArrayBuffer> {
+export const VOICE_ID_RE = /^[A-Za-z0-9]{10,40}$/;
+
+export async function synthesize(text: string, voiceId?: string | null): Promise<ArrayBuffer> {
   const clean = text.slice(0, MAX_TTS_CHARS);
+  const voice = voiceId && VOICE_ID_RE.test(voiceId) ? voiceId : env.elevenVoice();
   await reserve(clean.length);
   try {
     const res = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(env.elevenVoice())}?output_format=mp3_44100_128`,
+      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voice)}?output_format=mp3_44100_128`,
       {
         method: "POST",
         headers: { "xi-api-key": env.elevenKey()!, "Content-Type": "application/json", Accept: "audio/mpeg" },
@@ -68,5 +71,62 @@ export async function synthesize(text: string): Promise<ArrayBuffer> {
   } catch (e) {
     await release(clean.length); // si falló, no cuenta
     throw e;
+  }
+}
+
+export interface VoiceOption {
+  id: string;
+  name: string;
+  description: string;
+  recommended: boolean;
+}
+
+// Voces sugeridas por su estilo (descripciones oficiales de ElevenLabs).
+const SUGGESTED: Record<string, string> = {
+  JBFqnCBsd6RMkjVDRZzb: "Británico, maduro, cálido y refinado",
+  onwK4e9ZLuTAKqWW03F9: "Británico, maduro, con autoridad",
+};
+
+/** Voces disponibles en la cuenta de ElevenLabs (las de fábrica y las que guardes de la biblioteca). */
+export async function listVoices(): Promise<VoiceOption[]> {
+  const res = await fetch("https://api.elevenlabs.io/v1/voices", {
+    headers: { "xi-api-key": env.elevenKey()! },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) throw new Error(`ElevenLabs respondió ${res.status}`);
+  const data = (await res.json()) as {
+    voices: { voice_id: string; name: string; category?: string; labels?: Record<string, string>; description?: string | null }[];
+  };
+  const opts = data.voices.map((v) => {
+    const l = v.labels ?? {};
+    const spanish = /spanish|español|latin|mexic|argentin|castil/i.test(`${l.language ?? ""} ${l.accent ?? ""} ${v.name}`);
+    const desc =
+      SUGGESTED[v.voice_id] ??
+      ([l.gender, l.age, l.accent, l.description ?? l.descriptive, l.use_case ?? l.use_case].filter(Boolean).join(", ") ||
+        v.description ||
+        "");
+    return {
+      id: v.voice_id,
+      name: v.name.split(" - ")[0],
+      description: desc + (spanish ? " · español nativo" : ""),
+      recommended: v.voice_id in SUGGESTED || spanish,
+    };
+  });
+  return opts.sort((a, b) => Number(b.recommended) - Number(a.recommended) || a.name.localeCompare(b.name));
+}
+
+/** Verifica la clave sin gastar: consulta la voz configurada. */
+export async function checkTts(): Promise<string> {
+  try {
+    const res = await fetch(`https://api.elevenlabs.io/v1/voices/${encodeURIComponent(env.elevenVoice())}`, {
+      headers: { "xi-api-key": env.elevenKey()! },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (res.ok) return `ok: ${((await res.json()) as { name: string }).name}`;
+    if (res.status === 401) return "error: clave de ElevenLabs inválida";
+    if (res.status === 404) return "error: la voz configurada no existe en tu cuenta";
+    return `error: ElevenLabs respondió ${res.status}`;
+  } catch {
+    return "error: no conecta con ElevenLabs";
   }
 }
