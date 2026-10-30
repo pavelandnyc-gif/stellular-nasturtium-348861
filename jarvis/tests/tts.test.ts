@@ -33,11 +33,21 @@ describe("voz premium (ElevenLabs)", () => {
     expect((await ttsUsage()).used).toBe(20);
   });
 
+  it("una frase repetida sale de la memoria y no se vuelve a pagar", async () => {
+    const before = calls.length;
+    const used = (await ttsUsage()).used;
+    await synthesize("Buenos días, Jefe.");
+    await synthesize("Buenos días, Jefe.");
+    expect(calls.length).toBe(before + 1);
+    expect((await ttsUsage()).used).toBe(used + "Buenos días, Jefe.".length);
+  });
+
   it("nunca se pasa del tope mensual", async () => {
-    await synthesize("x".repeat(70)); // 90 de 100
+    const used = (await ttsUsage()).used;
+    await synthesize("x".repeat(100 - used - 5)); // quedan 5
     await expect(synthesize("y".repeat(20))).rejects.toBeInstanceOf(TtsLimitError);
     const u = await ttsUsage();
-    expect(u.used).toBe(90);
-    expect(u.remaining).toBe(10);
+    expect(u.used).toBe(95);
+    expect(u.remaining).toBe(5);
   });
 });

@@ -148,3 +148,8 @@ export function hourlyRandom(seed: string) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+
+/** Saludo breve al volver a la app en el mismo día (pocas frases fijas: su audio se reutiliza). */
+export function buildReturnGreeting(name: string, random: () => number = Math.random): string {
+  return pick([`De vuelta, ${name}.`, `Aquí sigo, ${name}. Tú dime.`, `Bienvenido de vuelta, ${name}. ¿Qué necesitas?`], random);
+}

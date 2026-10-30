@@ -2,6 +2,7 @@ import "server-only";
 import { query } from "./db";
 import { env } from "./env";
 import { forSpeech } from "./speech";
+import { createHash } from "node:crypto";
 
 // Voz premium de Jarvis con ElevenLabs. La clave vive solo en el servidor.
 // Se cuenta cada carácter enviado y, al llegar al tope mensual, la app vuelve
@@ -76,6 +77,13 @@ export async function synthesize(text: string, voiceId?: string | null, model?: 
   const clean = forSpeech(text).slice(0, MAX_TTS_CHARS);
   const voice = voiceId && VOICE_ID_RE.test(voiceId) ? voiceId : env.elevenVoice();
   const chosen = model && (TTS_MODELS as readonly string[]).includes(model) ? model : env.elevenModel();
+  // ¿Ya se generó esta misma frase con esta voz? Entonces sale gratis.
+  const key = createHash("sha256").update(`${voice}|${chosen}|${clean}`).digest("hex");
+  const hit = await query<{ audio: Uint8Array }>("select audio from jarvis.tts_cache where key = $1", [key]);
+  if (hit[0]) {
+    const a = hit[0].audio;
+    return a.buffer.slice(a.byteOffset, a.byteOffset + a.byteLength) as ArrayBuffer;
+  }
   await reserve(clean.length);
   try {
     let res = await callTts(clean, voice, chosen);
@@ -84,7 +92,14 @@ export async function synthesize(text: string, voiceId?: string | null, model?: 
       res = await callTts(clean, voice, env.elevenModel());
     }
     if (!res.ok) throw new Error(`ElevenLabs respondió ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    return await res.arrayBuffer();
+    const audio = await res.arrayBuffer();
+    await query("insert into jarvis.tts_cache (key, audio) values ($1, $2) on conflict (key) do nothing", [
+      key,
+      Buffer.from(audio),
+    ]).catch(() => {});
+    // Limpieza ocasional: se guardan los audios de los últimos 7 días.
+    if (Math.random() < 0.05) await query("delete from jarvis.tts_cache where created_at < now() - interval '7 days'").catch(() => {});
+    return audio;
   } catch (e) {
     await release(clean.length); // si falló, no cuenta
     throw e;

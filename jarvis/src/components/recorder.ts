@@ -17,7 +17,7 @@ export interface Recorder {
   mime: string;
 }
 
-const SILENCE_MS = 1300; // pausa que indica que terminaste
+const SILENCE_MS = 1100; // pausa que indica que terminaste (más corta = respuesta más rápida)
 const NO_SPEECH_MS = 7000; // si no dices nada en 7 s, se cierra
 const MAX_MS = 30_000;
 
@@ -36,6 +36,11 @@ export function primeAudioContext() {
   } catch {
     audioCtx = null;
   }
+  return audioCtx;
+}
+
+/** Contexto de audio compartido (micrófono y voz de Jarvis usan el mismo). */
+export function getAudioContext() {
   return audioCtx;
 }
 

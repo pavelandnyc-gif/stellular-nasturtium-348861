@@ -14,6 +14,8 @@ import { audioUnlocked, loadVoicePrefs, prepare, speak, speechSupported, stopSpe
 
 const LAST_KEY = "jarvis.lastGreeting";
 const REPEAT_AFTER_MS = 60_000; // saluda cada vez que abres la app (o vuelves tras más de 1 minuto)
+const FULL_KEY = "jarvis.lastFullGreeting"; // fecha del último saludo completo (con arranque e informe)
+const FULL_AFTER_MS = 4 * 3600_000; // o si pasaron más de 4 horas sin abrir la app
 const BOOT_MS = 2300;
 
 type Mode = "idle" | "listening" | "thinking" | "speaking";
@@ -54,7 +56,22 @@ function greetingDue() {
  * Bienvenida de Jarvis: arranque del sistema → saludo corto → escucha sola →
  * informe del día si lo pides. Tocando el reactor se conversa en cualquier momento.
  */
-export function JarvisGreeting({ text, name, aiReady }: { text: string; name: string; aiReady: boolean }) {
+export function JarvisGreeting({
+  text: fullText,
+  returnText,
+  today,
+  name,
+  aiReady,
+}: {
+  text: string;
+  returnText: string;
+  today: string;
+  name: string;
+  aiReady: boolean;
+}) {
+  // Saludo completo la primera vez del día (o tras 4 h); si no, uno breve.
+  const [full, setFull] = useState(true);
+  const text = full ? fullText : returnText;
   const router = useRouter();
   const [shown, setShown] = useState("");
   const [mode, setMode] = useState<Mode>("idle");
@@ -138,7 +155,18 @@ export function JarvisGreeting({ text, name, aiReady }: { text: string; name: st
   // Al abrir (o volver a la app): arranque + saludo.
   useEffect(() => {
     if (!greetingDue()) return;
-    const prefs = loadVoicePrefs();
+    let isFull = true;
+    try {
+      const [day, at] = (localStorage.getItem(FULL_KEY) ?? "").split("|");
+      isFull = day !== today || Date.now() - Number(localStorage.getItem(LAST_KEY) ?? 0) > FULL_AFTER_MS || !at;
+      if (isFull) localStorage.setItem(FULL_KEY, `${today}|${Date.now()}`);
+    } catch {
+      /* */
+    }
+    setFull(isFull);
+    textRef.current = isFull ? fullText : returnText;
+    const prefs = { ...loadVoicePrefs() };
+    if (!isFull) prefs.boot = false; // al volver en el mismo día: sin animación, directo al grano
     let cancelled = false;
     // Prepara el audio del saludo mientras corre la animación.
     voicesReady().then(() => prepare(textRef.current));
