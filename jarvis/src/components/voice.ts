@@ -1,6 +1,7 @@
 "use client";
 import { diag } from "./diag";
 import { forSpeech } from "@/lib/speech";
+import { getAudioContext } from "./recorder";
 
 // Voz de Jarvis con la síntesis de voz del propio iPhone (gratis, sin internet).
 // Las preferencias se guardan en este dispositivo, porque cada equipo tiene sus voces.
@@ -118,6 +119,7 @@ function speakDevice(text: string, prefs: VoicePrefs, onStart?: () => void, onEn
 
 export function stopSpeaking() {
   if (speechSupported()) speechSynthesis.cancel();
+  stopWebAudio();
   finishCurrent?.(); // primero marca como terminado: así la pausa no se toma como "inesperada"
   if (audioEl) audioEl.pause(); // avisa que terminó (si alguien esperaba el final del audio)
 }
@@ -157,7 +159,7 @@ export function unlockAudio() {
 
 /** ¿Ya se puede reproducir audio sin un toque nuevo? (iPhone) */
 export function audioUnlocked() {
-  return !!audioEl?.dataset.unlocked;
+  return !!audioEl?.dataset.unlocked || getAudioContext()?.state === "running";
 }
 
 /** Instala el desbloqueo en el primer toque de cualquier pantalla. */
@@ -229,9 +231,153 @@ async function fetchAudio(text: string): Promise<string | null> {
   }
 }
 
+// ── Reproducción por frases con Web Audio ───────────────────────────────────
+// Más rápido: empieza a hablar con la primera frase mientras se generan las demás.
+// Sin tropiezos: usa el mismo canal de audio que el micrófono (el iPhone ya no
+// "cambia de modo" a mitad del audio) y encadena las frases sin huecos.
+
+const buffers = new Map<string, Promise<AudioBuffer | null>>();
+let sources: AudioBufferSourceNode[] = [];
+let webDone: (() => void) | null = null;
+
+/** Divide en frases: la primera sola (para empezar rápido) y el resto en trozos de hasta ~150 caracteres. */
+export function splitSpeech(text: string): string[] {
+  const sentences = (text.match(/[^.!?…]+(?:[.!?…]+|$)/g) ?? [text]).map((x) => x.trim()).filter(Boolean);
+  if (!sentences.length) return [text];
+  let first = sentences.shift()!;
+  // Un primer trozo muy corto ("Hecho.") se une a la siguiente frase para que suene natural.
+  while (first.length < 25 && sentences.length) first = `${first} ${sentences.shift()}`;
+  const out = [first];
+  for (const s of sentences) {
+    const last = out.length > 1 ? out[out.length - 1] : null;
+    if (last && (last + " " + s).length <= 150) out[out.length - 1] = `${last} ${s}`;
+    else out.push(s);
+  }
+  return out;
+}
+
+function styleModel() {
+  return loadVoicePrefs().style === "expressive" ? "eleven_v3" : undefined;
+}
+
+async function fetchBytes(text: string, voiceId?: string): Promise<ArrayBuffer | null> {
+  try {
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: text.slice(0, 800), voiceId, model: styleModel() }),
+    });
+    if (!res.ok) {
+      if (res.status === 429 || res.status === 503) premium = Promise.resolve(false); // tope alcanzado: voz del iPhone
+      return null;
+    }
+    return await res.arrayBuffer();
+  } catch {
+    return null;
+  }
+}
+
+function decoded(text: string): Promise<AudioBuffer | null> {
+  const key = `${styleModel() ?? ""}::${text}`;
+  let p = buffers.get(key);
+  if (!p) {
+    p = (async () => {
+      const ctx = getAudioContext();
+      const bytes = await fetchBytes(text);
+      if (!bytes || !ctx) return null;
+      try {
+        return await ctx.decodeAudioData(bytes.slice(0));
+      } catch {
+        return null;
+      }
+    })();
+    buffers.set(key, p);
+    p.then((b) => b || buffers.delete(key));
+  }
+  return p;
+}
+
+function stopWebAudio() {
+  for (const s of sources) {
+    try {
+      s.onended = null;
+      s.stop();
+    } catch {
+      /* ya terminó */
+    }
+  }
+  sources = [];
+  const d = webDone;
+  webDone = null;
+  d?.();
+}
+
+function webAudioReady() {
+  const ctx = getAudioContext();
+  return !!ctx && ctx.state === "running";
+}
+
+function speakWebAudio(text: string, prefs: VoicePrefs, onStart?: () => void, onEnd?: () => void): SpeakHandle {
+  const ctx = getAudioContext()!;
+  stopWebAudio();
+  if (speechSupported()) speechSynthesis.cancel();
+  if (audioEl) audioEl.pause();
+  const parts = splitSpeech(text);
+  const pending = parts.map((p) => decoded(p)); // se piden todas a la vez; suena la primera en cuanto llega
+  let resolveStart: (b: boolean) => void = () => {};
+  let resolveDone: () => void = () => {};
+  const started = new Promise<boolean>((r) => (resolveStart = r));
+  const done = new Promise<void>((r) => (resolveDone = r));
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    resolveStart(false);
+    resolveDone();
+    onEnd?.();
+  };
+  webDone = finish;
+  (async () => {
+    let at = 0;
+    let first = true;
+    for (const p of pending) {
+      const buf = await p;
+      if (finished) return;
+      if (!buf) continue;
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.playbackRate.value = prefs.rate;
+      src.connect(ctx.destination);
+      const when = Math.max(ctx.currentTime + 0.02, at);
+      src.start(when);
+      at = when + buf.duration / prefs.rate;
+      sources.push(src);
+      if (first) {
+        first = false;
+        resolveStart(true);
+        onStart?.();
+      }
+    }
+    if (first) {
+      // No llegó ningún audio: que lo diga la voz del iPhone.
+      webDone = null;
+      const h = speakDevice(text, prefs, onStart, onEnd);
+      resolveStart(await h.started);
+      await h.done;
+      finished = true;
+      return resolveDone();
+    }
+    const last = sources.at(-1);
+    if (last) last.onended = () => webDone === finish && (webDone = null, finish());
+  })();
+  return { started, done };
+}
+
 /** Pre-genera el audio (por ejemplo, el saludo) para que suene al instante al tocar. */
 export async function prepare(text: string, prefs = loadVoicePrefs()) {
-  if (prefs.engine === "premium" && (await premiumAvailable())) await fetchAudio(text);
+  if (prefs.engine !== "premium" || !(await premiumAvailable())) return;
+  if (getAudioContext()) await Promise.all(splitSpeech(text).map((p) => decoded(p)));
+  else await fetchAudio(text);
 }
 
 function playUrl(url: string, prefs: VoicePrefs, onStart?: () => void, onEnd?: () => void): SpeakHandle {
@@ -287,9 +433,19 @@ function playUrl(url: string, prefs: VoicePrefs, onStart?: () => void, onEnd?: (
  */
 export function speak(text: string, prefs = loadVoicePrefs(), onStart?: () => void, onEnd?: () => void): SpeakHandle {
   if (!text) return { started: Promise.resolve(false), done: Promise.resolve() };
-  const cached = cache.get(text);
-  if (prefs.engine === "premium" && cached) return playUrl(cached, prefs, onStart, onEnd);
   if (prefs.engine !== "premium") return speakDevice(text, prefs, onStart, onEnd);
+  // Camino principal: por frases y con Web Audio (más rápido y sin tropiezos).
+  if (webAudioReady()) {
+    let inner: SpeakHandle | null = null;
+    const started = (async () => {
+      inner = (await premiumAvailable()) ? speakWebAudio(text, prefs, onStart, onEnd) : speakDevice(text, prefs, onStart, onEnd);
+      return inner.started;
+    })();
+    return { started, done: started.then(() => inner?.done).then(() => undefined) };
+  }
+  // Respaldo: reproductor normal con el audio completo.
+  const cached = cache.get(text);
+  if (cached) return playUrl(cached, prefs, onStart, onEnd);
 
   let inner: SpeakHandle | null = null;
   const started = (async () => {

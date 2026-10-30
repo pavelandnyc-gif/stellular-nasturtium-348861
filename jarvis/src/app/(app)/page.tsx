@@ -1,7 +1,7 @@
 import { pageContext } from "@/lib/page";
 import { aiConfigured } from "@/lib/ai/agent";
 import { dayInput } from "@/lib/day";
-import { buildGreeting, hourlyRandom } from "@/lib/greeting";
+import { buildGreeting, buildReturnGreeting, hourlyRandom } from "@/lib/greeting";
 import { nowIn, todayIn } from "@/lib/time";
 import { JarvisGreeting } from "@/components/JarvisGreeting";
 
@@ -9,6 +9,8 @@ import { JarvisGreeting } from "@/components/JarvisGreeting";
 export default async function Home() {
   const { user, profile, tz } = await pageContext();
   const input = await dayInput(user.id, tz, profile.display_name);
-  const welcome = buildGreeting({ ...input, random: hourlyRandom(`${user.id}:${todayIn(tz)}:${nowIn(tz).hour}`) });
-  return <JarvisGreeting text={welcome} name={profile.display_name} aiReady={aiConfigured()} />;
+  const seed = `${user.id}:${todayIn(tz)}:${nowIn(tz).hour}`;
+  const welcome = buildGreeting({ ...input, random: hourlyRandom(seed) });
+  const welcomeBack = buildReturnGreeting(profile.display_name, hourlyRandom(`${seed}:back`));
+  return <JarvisGreeting text={welcome} returnText={welcomeBack} today={todayIn(tz)} name={profile.display_name} aiReady={aiConfigured()} />;
 }

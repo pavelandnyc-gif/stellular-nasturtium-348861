@@ -29,9 +29,9 @@ const DATE_OID = 1082;
  * Supabase ("[mi-clave]"). Se toma todo lo que hay entre "usuario:" y la última "@".
  */
 export function parseDatabaseUrl(raw: string) {
-  const m = raw.trim().match(/^postgres(?:ql)?:\/\/([^:/@]+):(.*)@([^@/:?#]+)(?::(\d+))?\/([^?#]*)/);
+  const m = raw.trim().match(/^postgres(?:ql)?:\/\/([^:/@]+)(?::(.*))?@([^@/:?#]+)(?::(\d+))?\/([^?#]*)/);
   if (!m) return null;
-  let password = m[2];
+  let password = m[2] ?? "";
   if (/^\[.*\]$/.test(password)) password = password.slice(1, -1);
   try {
     if (/%[0-9a-f]{2}/i.test(password)) password = decodeURIComponent(password);
