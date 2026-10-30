@@ -62,9 +62,11 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
     setMode("speaking");
     const h = speak(textRef.current, loadVoicePrefs(), undefined, () => setMode((m) => (m === "speaking" ? "idle" : m)));
     const ok = await h.started;
+    diag("greeting", ok ? "empezó a sonar" : "bloqueado (espera un toque)", { engine: loadVoicePrefs().engine, chars: textRef.current.length });
     if (ok) {
       setNeedsTap(false);
       markGreeted();
+      h.done.then(() => diag("greeting", "terminó"));
     } else setMode("idle");
     return ok;
   }, []);

@@ -1,4 +1,5 @@
 "use client";
+import { diag } from "./diag";
 
 // Voz de Jarvis con la síntesis de voz del propio iPhone (gratis, sin internet).
 // Las preferencias se guardan en este dispositivo, porque cada equipo tiene sus voces.
@@ -113,8 +114,8 @@ function speakDevice(text: string, prefs: VoicePrefs, onStart?: () => void, onEn
 
 export function stopSpeaking() {
   if (speechSupported()) speechSynthesis.cancel();
-  if (audioEl) audioEl.pause();
-  finishCurrent?.(); // avisa que terminó (si alguien esperaba el final del audio)
+  finishCurrent?.(); // primero marca como terminado: así la pausa no se toma como "inesperada"
+  if (audioEl) audioEl.pause(); // avisa que terminó (si alguien esperaba el final del audio)
 }
 
 let finishCurrent: (() => void) | null = null;
@@ -141,12 +142,13 @@ function player() {
 /** Llamar dentro de un toque del usuario: deja el reproductor listo para sonar después. */
 export function unlockAudio() {
   const a = player();
-  if (a.dataset.unlocked) return;
+  // Nunca interrumpir algo que ya está sonando (antes esto cortaba el saludo).
+  if (a.dataset.unlocked || !a.paused) return;
   a.src = SILENCE;
   a.play()
     .then(() => (a.dataset.unlocked = "1"))
     .catch(() => {});
-  if (speechSupported()) speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+  if (speechSupported() && !speechSynthesis.speaking) speechSynthesis.speak(new SpeechSynthesisUtterance(""));
 }
 
 /** Instala el desbloqueo en el primer toque de cualquier pantalla. */
@@ -241,7 +243,20 @@ function playUrl(url: string, prefs: VoicePrefs, onStart?: () => void, onEnd?: (
   };
   finishCurrent?.();
   finishCurrent = finish;
-  a.onended = a.onerror = finish;
+  const t0 = Date.now();
+  a.onended = finish;
+  a.onerror = () => {
+    diag("audio", "error al reproducir", { code: a.error?.code, at: a.currentTime });
+    finish();
+  };
+  // Si el iPhone pausa el audio por su cuenta (no lo pedimos nosotros), lo anotamos y seguimos.
+  a.onpause = () => {
+    if (!finished && !a.ended && a.currentTime > 0 && a.currentTime < (a.duration || Infinity) - 0.2) {
+      diag("audio", "pausa inesperada", { at: a.currentTime, dur: a.duration, ms: Date.now() - t0 });
+      a.play().catch(() => finish());
+    }
+  };
+  a.onstalled = () => diag("audio", "audio atascado (stalled)", { at: a.currentTime, dur: a.duration });
   const started = a
     .play()
     .then(() => {
