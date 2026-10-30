@@ -14,6 +14,7 @@ export interface Recorder {
   result: Promise<Recording>;
   level: () => number; // volumen actual 0..1 (para animar el reactor)
   autoStop: boolean; // false si el iPhone no permitió medir el volumen: hay que tocar para enviar
+  readonly heardVoice: boolean; // ya detectó tu voz en esta grabación
   mime: string;
 }
 
@@ -164,6 +165,9 @@ export function record(stream: MediaStream): Recorder {
     level: () => current,
     get autoStop() {
       return vadOk();
+    },
+    get heardVoice() {
+      return spoke;
     },
     mime: rec.mimeType || mime,
   };
