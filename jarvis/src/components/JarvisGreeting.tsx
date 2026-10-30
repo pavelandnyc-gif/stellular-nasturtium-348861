@@ -42,7 +42,16 @@ const STATUS: Record<Mode, string> = {
 // Fin de palabra compatible con acentos (\b no reconoce "í" como letra).
 const END = "(?=$|[\\s,.;:!¡?¿])";
 const YES = new RegExp(`^(s[ií]|sip|dale|claro|adelante|por favor|ok|okay|va|venga|perfecto|seguro|d[aá]melo|el informe|informe|cu[eé]ntame|a ver)${END}`, "i");
+const BYE = new RegExp(
+  `^(bye|bai|adi[oó]s|chao|chau|hasta luego|hasta pronto|nos vemos|gracias,? eso es todo|eso es todo|nada m[aá]s|ya est[aá]|listo,? gracias|buenas noches)${END}`,
+  "i",
+);
 const NO = new RegExp(`^(no|nop|despu[eé]s|luego|m[aá]s tarde|ahora no|no gracias)${END}`, "i");
+
+function pickBye(name: string) {
+  const xs = [`Hasta luego, ${name}.`, `Aquí estaré, ${name}.`, `Cuando me necesites, ${name}.`];
+  return xs[Math.floor(Math.random() * xs.length)];
+}
 
 function greetingDue() {
   try {
@@ -280,8 +289,10 @@ export function JarvisGreeting({
   async function say(answer: string, actions?: Action[]) {
     addTurn({ role: "jarvis", text: answer, actions });
     setMode("speaking");
+    const t0 = performance.now();
     const h = speak(answer, loadVoicePrefs());
-    await h.started;
+    const ok = await h.started;
+    diag("timing", ok ? "voz empezó" : "voz no sonó", { ms: Math.round(performance.now() - t0), chars: answer.length });
     await h.done;
   }
 
@@ -349,14 +360,20 @@ export function JarvisGreeting({
       if (active.current) return turn();
       return;
     }
+    if (BYE.test(clean) && clean.length < 40) {
+      await say(pickBye(name));
+      return endConversation();
+    }
     if (offered && NO.test(clean)) {
       await say("Entendido. Aquí estoy si me necesitas.");
       return endConversation();
     }
 
     let answer: { text: string; actions: Action[] };
+    const t0 = performance.now();
     try {
       answer = (await call<{ reply: { text: string; actions: Action[] } }>("/api/chat", "POST", { message: said })).reply;
+      diag("timing", "ia", { ms: Math.round(performance.now() - t0), chars: answer.text.length });
     } catch (e) {
       diag("chat", `error: ${(e as Error).message}`);
       return endConversation();
@@ -392,7 +409,12 @@ export function JarvisGreeting({
     primeAudioContext(); // debe ocurrir en el mismo toque (requisito del iPhone)
     markGreeted();
     setNeedsTap(false);
-    if (mode === "listening") return recRef.current?.stop();
+    if (mode === "listening") {
+      const r = recRef.current;
+      // Si todavía no dijiste nada, el toque no corta: sigue escuchando.
+      if (r && r.autoStop && !r.heardVoice) return toast(`Te escucho, ${name}. Habla cuando quieras.`, "info");
+      return r?.stop();
+    }
     if (mode === "speaking") {
       stopSpeaking();
       if (active.current) return; // la conversación sigue escuchando
