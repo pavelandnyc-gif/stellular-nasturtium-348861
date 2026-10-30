@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authMode, env } from "@/lib/env";
-import { query, usingLocalDatabase } from "@/lib/db";
+import { createHash } from "node:crypto";
+import { parseDatabaseUrl, query, usingLocalDatabase } from "@/lib/db";
 import { pushConfigured } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,12 @@ function describeDbError(e: unknown) {
   if (/timeout|ETIMEDOUT|ECONNREFUSED/i.test(msg)) return "error: tiempo de espera agotado al conectar";
   if (/migraci/i.test(msg)) return "error: conectó, pero falló la migración";
   return `error: no conecta (código ${err.code ?? "desconocido"})`;
+}
+
+function dbFingerprint() {
+  const url = env.databaseUrl();
+  const p = url ? parseDatabaseUrl(url) : null;
+  return p ? createHash("sha256").update(p.password).digest("hex").slice(0, 6) : null;
 }
 
 // Diagnóstico público: solo dice SÍ/NO de cada configuración. Nunca muestra valores.
@@ -37,6 +44,8 @@ export async function GET() {
     ai: !!env.anthropicKey(),
     aiModel: env.aiModel(),
     appUrl: !!env.appUrl(),
+    // Huella de 6 caracteres de la contraseña: permite comprobar cuál está puesta sin revelarla.
+    dbPasswordFingerprint: dbFingerprint(),
   };
   const ok = checks.database === "ok" && checks.auth === "supabase" && checks.allowedEmails > 0 && checks.push && checks.cronSecret;
   return NextResponse.json({ ok, ...checks });
