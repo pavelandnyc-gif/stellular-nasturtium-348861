@@ -51,32 +51,33 @@ export interface ActionCard {
 const dateField = z
   .string()
   .refine(isValidDate, "Fecha inválida, usa AAAA-MM-DD")
-  .nullable();
-const timeField = z.string().regex(TIME_RE, "Hora inválida, usa HH:MM en formato 24 h").nullable();
-const priorityField = z.enum(["alta", "media", "baja"]).nullable();
+  .nullish();
+const timeField = z.string().regex(TIME_RE, "Hora inválida, usa HH:MM en formato 24 h").nullish();
+const priorityField = z.enum(["alta", "media", "baja"]).nullish();
 const daysField = z.array(z.number().int().min(1).max(7)).max(7);
 const repeatField = z.object({ type: z.enum(["none", "daily", "weekly"]), days: daysField });
 const uuid = z.string().uuid("Identificador inválido");
 
 const PRIORITY_NUM = { alta: 1, media: 2, baja: 3 } as const;
 
-// Campo opcional en formato estricto: "valor o null" con anyOf (las listas de tipos no se aceptan con enum).
-const nullable = (type: string, extra: { description?: string; enum?: string[] } = {}) => {
-  const { description, ...rest } = extra;
-  return { ...(description ? { description } : {}), anyOf: [{ type, ...rest }, { type: "null" }] };
-};
+// Campo opcional: simplemente no va en "required" (la IA lo omite si no aplica).
+// No usamos el modo "strict" porque limita la cantidad de campos opcionales; la
+// validación real la hace zod en el servidor antes de guardar nada.
+const OPTIONAL = "__optional";
+const nullable = (type: string, extra: { description?: string; enum?: string[] } = {}) => ({ type, ...extra, [OPTIONAL]: true });
 
-function toolDef(name: string, description: string, properties: Record<string, unknown>): Anthropic.Beta.BetaTool {
+function toolDef(name: string, description: string, properties: Record<string, Record<string, unknown>>): Anthropic.Beta.BetaTool {
+  const props: Record<string, unknown> = {};
+  const required: string[] = [];
+  for (const [k, v] of Object.entries(properties)) {
+    const { [OPTIONAL]: optional, ...schema } = v;
+    props[k] = schema;
+    if (!optional) required.push(k);
+  }
   return {
     name,
     description,
-    strict: true,
-    input_schema: {
-      type: "object",
-      properties,
-      required: Object.keys(properties),
-      additionalProperties: false,
-    },
+    input_schema: { type: "object", properties: props, required, additionalProperties: false },
   } as Anthropic.Beta.BetaTool;
 }
 
@@ -160,41 +161,41 @@ export const TOOL_DEFS: Anthropic.Beta.BetaTool[] = [
 
 const schemas = {
   save_idea: z.object({ content: z.string().trim().min(1).max(4000) }),
-  search_ideas: z.object({ query: z.string().max(200).nullable(), since_days: z.number().int().min(1).max(3650).nullable() }),
-  update_idea: z.object({ idea_id: uuid, content: z.string().trim().min(1).max(4000).nullable(), delete: z.boolean() }),
+  search_ideas: z.object({ query: z.string().max(200).nullish(), since_days: z.number().int().min(1).max(3650).nullish() }),
+  update_idea: z.object({ idea_id: uuid, content: z.string().trim().min(1).max(4000).nullish(), delete: z.boolean() }),
   create_task: z.object({
     title: z.string().trim().min(1).max(500),
     date: dateField,
     time: timeField,
     priority: priorityField,
     repeat: repeatField,
-    notes: z.string().max(2000).nullable(),
+    notes: z.string().max(2000).nullish(),
   }),
   list_tasks: z.object({
     scope: z.enum(["today", "overdue", "upcoming", "nodate", "pending", "completed"]),
-    query: z.string().max(200).nullable(),
+    query: z.string().max(200).nullish(),
   }),
   update_task: z.object({
     task_id: uuid,
     action: z.enum(["reschedule", "complete", "snooze", "edit", "delete"]),
     date: dateField,
     time: timeField,
-    snooze_minutes: z.number().int().min(1).max(60 * 24 * 14).nullable(),
-    title: z.string().trim().min(1).max(500).nullable(),
+    snooze_minutes: z.number().int().min(1).max(60 * 24 * 14).nullish(),
+    title: z.string().trim().min(1).max(500).nullish(),
     priority: priorityField,
   }),
   create_habit: z.object({
     name: z.string().trim().min(1).max(200),
-    emoji: z.string().max(16).nullable(),
+    emoji: z.string().max(16).nullish(),
     days: daysField,
     time: timeField,
-    target_minutes: z.number().int().min(1).max(1440).nullable(),
+    target_minutes: z.number().int().min(1).max(1440).nullish(),
   }),
   list_habits: z.object({}),
   log_habit: z.object({ habit_id: uuid, date: dateField, done: z.boolean() }),
   convert_idea_to_task: z.object({
     idea_id: uuid,
-    title: z.string().trim().min(1).max(500).nullable(),
+    title: z.string().trim().min(1).max(500).nullish(),
     date: dateField,
     time: timeField,
     priority: priorityField,

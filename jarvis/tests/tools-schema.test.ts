@@ -15,10 +15,15 @@ describe("esquemas de herramientas de la IA", () => {
     for (const t of TOOL_DEFS) walk((t as any).input_schema, (t as any).name, problems);
     expect(problems).toEqual([]);
   });
-  it("todas son estrictas y con additionalProperties: false", () => {
-    for (const t of TOOL_DEFS as any[]) {
-      expect(t.strict).toBe(true);
-      expect(t.input_schema.additionalProperties).toBe(false);
-    }
+  it("sin uniones de tipos (anyOf / listas de tipos) y sin marcas internas", () => {
+    const json = JSON.stringify(TOOL_DEFS);
+    expect(json).not.toContain("anyOf");
+    expect(json).not.toContain("__optional");
+    expect(json).not.toMatch(/"type":\[/);
+    for (const t of TOOL_DEFS as any[]) expect(t.input_schema.additionalProperties).toBe(false);
+  });
+  it("los campos opcionales no están en required", () => {
+    const create = (TOOL_DEFS as any[]).find((t) => t.name === "create_task");
+    expect(create.input_schema.required).toEqual(["title", "repeat"]);
   });
 });

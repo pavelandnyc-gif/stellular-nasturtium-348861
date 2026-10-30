@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { safeEqual } from "@/lib/session";
 import { checkTts } from "@/lib/tts";
 import { TOOL_DEFS } from "@/lib/ai/tools";
+import { aiSelfTest } from "@/lib/ai/agent";
 import { authMode, env } from "@/lib/env";
 import { createHash } from "node:crypto";
 import { parseDatabaseUrl, query, usingLocalDatabase } from "@/lib/db";
@@ -69,6 +70,8 @@ export async function GET(req: Request) {
           messages: [{ role: "user", content: "Hola" }],
         });
         aiCheck = `ok: ${m.id} · herramientas válidas (${count.input_tokens} tokens)`;
+        // ?ai=full: además hace una consulta real con la misma configuración que el chat.
+        if (new URL(req.url).searchParams.get("ai") === "full") aiCheck += ` · consulta real ${await aiSelfTest()}`;
       } catch (e) {
         aiCheck =
           e instanceof Anthropic.AuthenticationError
