@@ -136,3 +136,54 @@ export async function checkTts(): Promise<string> {
     return "error: no conecta con ElevenLabs";
   }
 }
+
+// ── Reconocimiento de voz (ElevenLabs Scribe) ───────────────────────────────
+// Más fiable que el dictado del navegador dentro de la app instalada del iPhone.
+
+export const MAX_STT_BYTES = 8 * 1024 * 1024;
+
+export class SttError extends Error {
+  constructor(
+    message: string,
+    public status = 502,
+  ) {
+    super(message);
+  }
+}
+
+export async function transcribe(audio: Blob, filename: string): Promise<string> {
+  const models = [env.elevenSttModel(), "scribe_v1"].filter((m, i, a) => a.indexOf(m) === i);
+  let lastError = "";
+  for (const model of models) {
+    for (const lang of ["es", null]) {
+      const form = new FormData();
+      form.append("file", audio, filename);
+      form.append("model_id", model);
+      if (lang) form.append("language_code", lang);
+      form.append("tag_audio_events", "false");
+      const res = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+        method: "POST",
+        headers: { "xi-api-key": env.elevenKey()! },
+        body: form,
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { text?: string };
+        return (data.text ?? "").trim();
+      }
+      const body = await res.text();
+      lastError = `${res.status}: ${body.slice(0, 200)}`;
+      if (res.status === 401) {
+        throw new SttError(
+          /missing_permissions/.test(body)
+            ? "A la clave de ElevenLabs le falta el permiso de Speech to Text."
+            : "La clave de ElevenLabs no es válida.",
+          401,
+        );
+      }
+      // 400/422: probamos sin idioma o con el modelo anterior; otros errores se cortan aquí.
+      if (res.status !== 400 && res.status !== 422) throw new SttError(`ElevenLabs respondió ${lastError}`);
+    }
+  }
+  throw new SttError(`No se pudo transcribir (${lastError})`);
+}

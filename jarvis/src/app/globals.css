@@ -251,3 +251,18 @@ select {
     animation: none !important;
   }
 }
+
+/* Reactor escuchando: tono cálido para indicar que el micrófono está activo */
+.reactor-listening {
+  filter: drop-shadow(0 0 22px rgba(248, 113, 113, 0.55));
+}
+.reactor-listening .reactor-ring-1 {
+  border-color: rgba(252, 165, 165, 0.9) transparent rgba(248, 113, 113, 0.9) transparent;
+  animation-duration: 3s;
+}
+.reactor-listening .reactor-core {
+  animation: none;
+  background: radial-gradient(circle, #fff1f1 0%, #fca5a5 35%, rgba(248, 113, 113, 0.35) 65%, transparent 72%);
+  box-shadow: 0 0 30px 6px rgba(248, 113, 113, 0.5);
+  transition: transform 0.08s linear;
+}

@@ -113,11 +113,11 @@ function speakDevice(text: string, prefs: VoicePrefs, onStart?: () => void, onEn
 
 export function stopSpeaking() {
   if (speechSupported()) speechSynthesis.cancel();
-  if (audioEl) {
-    audioEl.pause();
-    audioEl.onended = null;
-  }
+  if (audioEl) audioEl.pause();
+  finishCurrent?.(); // avisa que terminó (si alguien esperaba el final del audio)
 }
+
+let finishCurrent: (() => void) | null = null;
 
 // ── Voz premium (ElevenLabs, generada en el servidor) ───────────────────────
 // iOS solo deja reproducir audio después de un toque. El truco: el primer toque
@@ -231,10 +231,17 @@ function playUrl(url: string, prefs: VoicePrefs, onStart?: () => void, onEnd?: (
   a.playbackRate = prefs.rate;
   let resolveDone: () => void = () => {};
   const done = new Promise<void>((r) => (resolveDone = r));
-  a.onended = a.onerror = () => {
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    if (finishCurrent === finish) finishCurrent = null;
     resolveDone();
     onEnd?.();
   };
+  finishCurrent?.();
+  finishCurrent = finish;
+  a.onended = a.onerror = finish;
   const started = a
     .play()
     .then(() => {
@@ -243,8 +250,7 @@ function playUrl(url: string, prefs: VoicePrefs, onStart?: () => void, onEnd?: (
       return true;
     })
     .catch(() => {
-      resolveDone();
-      onEnd?.();
+      finish();
       return false;
     });
   return { started, done };
