@@ -24,50 +24,76 @@ export function buildGreeting(g: GreetingInput): string {
   const weekend = local.weekday >= 6;
   const n = g.name;
 
+  // Frases originales con el estilo de un asistente de película: elegante, ingenioso y "en línea".
   let opening: string;
-  if (h < 5) opening = pick([`Trabajando hasta tarde, ${n}. Aquí sigo.`, `Buenas noches, ${n}. Es tarde, pero aquí estoy.`], r);
+  if (h < 5)
+    opening = pick(
+      [
+        `${n}, pasan de las doce. Admiro la dedicación; mi recomendación oficial sigue siendo dormir.`,
+        `Turno de madrugada, ${n}. Sistemas en línea y yo, como siempre, despierto.`,
+      ],
+      r,
+    );
   else if (h < 12)
     opening = pick(
       [
-        `Buenos días, ${n}. Todos los sistemas en orden.`,
-        `Buenos días, ${n}. Bienvenido de nuevo.`,
-        weekend ? `Buenos días, ${n}. Feliz fin de semana.` : `Buenos días, ${n}. Listo para el día cuando tú lo estés.`,
+        `Buenos días, ${n}. Sistemas en línea, agenda cargada y listo para despegar.`,
+        `Buenos días, ${n}. Diagnóstico completo: todo funciona. Incluido tú, espero.`,
+        `Bienvenido de vuelta, ${n}. Ya calenté los motores; el café corre por tu cuenta.`,
+        weekend
+          ? `Buenos días, ${n}. Es fin de semana: el único pendiente obligatorio es disfrutarlo.`
+          : `Buenos días, ${n}. Un nuevo día, todos los sistemas a tu disposición.`,
       ],
       r,
     );
   else if (h < 19)
-    opening = pick([`Buenas tardes, ${n}. Bienvenido de nuevo.`, `Buenas tardes, ${n}. Todo bajo control por aquí.`], r);
-  else opening = pick([`Buenas noches, ${n}. Bienvenido de nuevo.`, `Buenas noches, ${n}. Revisemos cómo va el día.`], r);
+    opening = pick(
+      [
+        `Buenas tardes, ${n}. Todo bajo control por aquí, como de costumbre.`,
+        `Bienvenido de vuelta, ${n}. Sistemas al cien por ciento.`,
+        `Hola de nuevo, ${n}. Te estaba esperando; bueno, siempre te estoy esperando.`,
+      ],
+      r,
+    );
+  else
+    opening = pick(
+      [
+        `Buenas noches, ${n}. Hora de cerrar el día con estilo.`,
+        `Bienvenido de vuelta, ${n}. Las luces bajan, pero yo sigo en línea.`,
+        `Buenas noches, ${n}. Revisemos la misión de hoy antes de descansar.`,
+      ],
+      r,
+    );
 
   const parts = [opening];
   const t = g.todayTasks;
   if (t.length === 1) {
-    parts.push(`Tienes un pendiente hoy: ${t[0].title}${t[0].due_time ? `, a las ${speakTime(t[0].due_time)}` : ""}.`);
+    parts.push(`Un solo pendiente en el radar: ${t[0].title}${t[0].due_time ? `, a las ${speakTime(t[0].due_time)}` : ""}.`);
   } else if (t.length > 1) {
     const first = t.find((x) => x.due_time) ?? t[0];
     parts.push(
-      `Tienes ${t.length} pendientes hoy. ${first.due_time ? `El primero, ${first.title}, a las ${speakTime(first.due_time)}.` : `Empezando por ${first.title}.`}`,
+      `Tengo ${t.length} pendientes en el radar. ${first.due_time ? `El primero, ${first.title}, a las ${speakTime(first.due_time)}.` : `Empezando por ${first.title}.`}`,
     );
   } else {
-    parts.push(pick(["Tu agenda de hoy está despejada.", "No hay pendientes para hoy. Un lujo poco común."], r));
+    parts.push(pick(["Agenda despejada. Un lujo que pocos se permiten.", "Cielo despejado: cero pendientes para hoy."], r));
   }
   if (g.overdueCount) {
     parts.push(
       g.overdueCount === 1
-        ? "Hay un asunto atrasado; cuando gustes lo reprogramamos."
-        : `Hay ${g.overdueCount} asuntos atrasados; cuando gustes los ponemos al día.`,
+        ? "Hay un asunto atrasado esperándote con paciencia; cuando quieras lo reprogramamos."
+        : `Hay ${g.overdueCount} asuntos atrasados esperándote con paciencia; cuando quieras los ponemos al día.`,
     );
   }
   if (g.pendingHabits.length) {
     parts.push(
       g.pendingHabits.length === 1
-        ? `Y queda pendiente ${g.pendingHabits[0].toLowerCase()}.`
-        : `Hábitos por hacer: ${listJoin(g.pendingHabits.map((x) => x.toLowerCase()))}.`,
+        ? `Y no lo olvido: ${g.pendingHabits[0].toLowerCase()} te espera.`
+        : `Y no lo olvido: ${listJoin(g.pendingHabits.map((x) => x.toLowerCase()))} te esperan.`,
     );
   } else if (g.doneHabits) {
-    parts.push("Hábitos de hoy cumplidos. Impecable.");
+    parts.push("Hábitos del día completos. Impecable, como siempre.");
   }
-  parts.push(pick(["¿Qué necesitas?", "¿En qué te ayudo?", "A tus órdenes.", "¿Por dónde empezamos?"], r));
+  parts.push(pick(["¿Qué necesitas?", "A tus órdenes.", "¿Por dónde empezamos?", "Tú dime, yo me encargo."], r));
   return parts.join(" ");
 }
 
