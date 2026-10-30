@@ -1,13 +1,13 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { IconBulb, IconChat, IconFlame, IconHome } from "./icons";
+import { IconBulb, IconChat, IconFlame, IconList } from "./icons";
 
 const TABS = [
-  { href: "/", label: "Inicio", Icon: IconHome },
-  { href: "/jarvis", label: "Jarvis", Icon: IconChat },
-  { href: "/ideas", label: "Ideas", Icon: IconBulb },
-  { href: "/habitos", label: "Hábitos", Icon: IconFlame },
+  { href: "/", label: "Jarvis", Icon: IconChat, match: (p: string) => p === "/" || p.startsWith("/jarvis") },
+  { href: "/hoy", label: "Hoy", Icon: IconList, match: (p: string) => /^\/(hoy|tareas|ajustes)/.test(p) },
+  { href: "/ideas", label: "Ideas", Icon: IconBulb, match: (p: string) => p.startsWith("/ideas") },
+  { href: "/habitos", label: "Hábitos", Icon: IconFlame, match: (p: string) => p.startsWith("/habitos") },
 ];
 
 export function BottomNav() {
@@ -18,8 +18,8 @@ export function BottomNav() {
       style={{ paddingBottom: "var(--safe-bottom)" }}
     >
       <ul className="mx-auto flex h-[var(--nav-h)] max-w-[640px] items-stretch">
-        {TABS.map(({ href, label, Icon }) => {
-          const active = href === "/" ? path === "/" || path.startsWith("/tareas") : path.startsWith(href);
+        {TABS.map(({ href, label, Icon, match }) => {
+          const active = match(path);
           return (
             <li key={href} className="flex-1">
               <Link

@@ -23,6 +23,12 @@ interface Action {
   detail: string;
   href?: string;
 }
+interface Turn {
+  id: number;
+  role: "jarvis" | "me";
+  text: string;
+  actions?: Action[];
+}
 
 const STATUS: Record<Mode, string> = {
   idle: "Toca el reactor para hablar",
@@ -54,9 +60,11 @@ export function JarvisGreeting({ text, name, aiReady }: { text: string; name: st
   const [mode, setMode] = useState<Mode>("idle");
   const [boot, setBoot] = useState<Boot>("hidden");
   const [needsTap, setNeedsTap] = useState(false);
-  const [heard, setHeard] = useState<string | null>(null);
-  const [reply, setReply] = useState<string | null>(null);
-  const [actions, setActions] = useState<Action[]>([]);
+  const [turns, setTurns] = useState<Turn[]>([]);
+  const [typing, setTyping] = useState(false);
+  const [draft, setDraft] = useState("");
+  const endRef = useRef<HTMLDivElement>(null);
+  const addTurn = (t: Omit<Turn, "id">) => setTurns((xs) => [...xs, { ...t, id: Date.now() + Math.random() }]);
   const [tapToSend, setTapToSend] = useState(false);
   const [greetKey, setGreetKey] = useState(0);
   const textRef = useRef(text);
@@ -219,7 +227,7 @@ export function JarvisGreeting({ text, name, aiReady }: { text: string; name: st
     closeMic();
     setMode("idle");
     setTapToSend(false);
-    if (goodbye) setReply(goodbye);
+    if (goodbye) addTurn({ role: "jarvis", text: goodbye });
   }
 
   async function transcribe(blob: Blob): Promise<string | null> {
@@ -241,8 +249,8 @@ export function JarvisGreeting({ text, name, aiReady }: { text: string; name: st
     return (data.text as string) ?? "";
   }
 
-  async function say(answer: string) {
-    setReply(answer);
+  async function say(answer: string, actions?: Action[]) {
+    addTurn({ role: "jarvis", text: answer, actions });
     setMode("speaking");
     const h = speak(answer, loadVoicePrefs());
     await h.started;
@@ -291,14 +299,12 @@ export function JarvisGreeting({ text, name, aiReady }: { text: string; name: st
       if (++retriesRef.current >= 2 || res.reason === "no-speech") {
         return endConversation(autoRef.current && !turnsRef.current ? undefined : "No te escuché bien. Toca el reactor cuando quieras.");
       }
-      setReply("No te entendí bien. ¿Me lo repites?");
+      addTurn({ role: "jarvis", text: "No te entendí bien. ¿Me lo repites?" });
       return turn();
     }
     retriesRef.current = 0;
     turnsRef.current += 1;
-    setHeard(said);
-    setReply(null);
-    setActions([]);
+    addTurn({ role: "me", text: said });
 
     // Respuesta a "¿Te doy el informe del día?"
     const clean = said.trim().replace(/^[¡¿,.\s]+/, "");
@@ -328,9 +334,8 @@ export function JarvisGreeting({ text, name, aiReady }: { text: string; name: st
       return endConversation();
     }
     if (!active.current) return;
-    setActions(answer.actions);
     if (answer.actions.length) router.refresh();
-    await say(answer.text);
+    await say(answer.text, answer.actions);
     if (active.current) return turn(); // sigue la conversación
   }
 
@@ -351,11 +356,6 @@ export function JarvisGreeting({ text, name, aiReady }: { text: string; name: st
     offerRef.current = offeringBriefing;
     turnsRef.current = 0;
     retriesRef.current = 0;
-    if (!auto) {
-      setHeard(null);
-      setReply(null);
-      setActions([]);
-    }
     turn();
   }
 
@@ -374,87 +374,163 @@ export function JarvisGreeting({ text, name, aiReady }: { text: string; name: st
     startConversation(false);
   }
 
-  const showGreeting = !heard && !reply;
+  // Escribir en vez de hablar (misma conversación, mismas respuestas en voz).
+  async function sendTyped() {
+    const msg = draft.trim();
+    if (!msg || mode === "thinking") return;
+    unlockAudio();
+    setDraft("");
+    setTyping(false);
+    stopSpeaking();
+    addTurn({ role: "me", text: msg });
+    setMode("thinking");
+    try {
+      if (/^(dame |danos )?(el )?informe( del d[ií]a)?[.!]?$/i.test(msg) || (offerRef.current && YES.test(msg))) {
+        offerRef.current = false;
+        const b = await call<{ text: string }>("/api/briefing");
+        await say(b.text);
+      } else {
+        offerRef.current = false;
+        const r = (await call<{ reply: { text: string; actions: Action[] } }>("/api/chat", "POST", { message: msg })).reply;
+        if (r.actions.length) router.refresh();
+        await say(r.text, r.actions);
+      }
+    } catch {
+      /* el error ya se mostró */
+    }
+    setMode("idle");
+  }
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [turns, shown]);
 
   return (
-    <section className="rise mb-6 flex flex-col items-center text-center">
+    <main
+      className="mx-auto flex h-[100dvh] max-w-[640px] flex-col"
+      style={{ paddingTop: "var(--safe-top)", paddingBottom: "calc(var(--safe-bottom) + var(--nav-h))" }}
+    >
       {boot !== "hidden" &&
         createPortal(
-          // Fuera de la sección animada: así cubre toda la pantalla.
+          // Fuera del contenido: así cubre toda la pantalla.
           <div className={boot === "leaving" ? "boot-out" : ""}>
             <BootSequence name={name} waiting={boot === "waiting"} running={boot === "running" || boot === "leaving"} onTap={bootTap} />
           </div>,
           document.body,
         )}
-      <button
-        onClick={onReactor}
-        onTouchEnd={(e) => e.stopPropagation()}
-        aria-label={STATUS[mode]}
-        className="relative my-2 grid size-40 place-items-center"
-      >
-        <span
-          className={`reactor ${mode === "speaking" || mode === "thinking" ? "reactor-talking" : ""} ${mode === "listening" ? "reactor-listening" : ""}`}
-          aria-hidden
-        >
-          <span className="reactor-ring reactor-ring-1" />
-          <span className="reactor-ring reactor-ring-2" />
-          <span className="reactor-ring reactor-ring-3" />
-          <span ref={coreRef} className="reactor-core" />
-        </span>
-      </button>
-      <p className={`mb-2 text-xs font-medium tracking-wide ${mode === "listening" ? "text-red-300" : "text-cyan-soft"}`}>
-        {mode === "listening" && <span className="mr-1.5 inline-block size-2 animate-pulse rounded-full bg-bad align-middle" />}
-        {needsTap && mode === "idle"
-          ? "Toca la pantalla para escuchar a Jarvis 🔊"
-          : mode === "listening" && tapToSend
-            ? "Te escucho… toca el reactor cuando termines"
-            : STATUS[mode]}
-      </p>
 
-      {showGreeting ? (
-        <p className="min-h-[3rem] max-w-md text-[17px] leading-relaxed text-text/95">
+      <div className="flex shrink-0 flex-col items-center pt-6">
+        <button
+          onClick={onReactor}
+          onTouchEnd={(e) => e.stopPropagation()}
+          aria-label={STATUS[mode]}
+          className="relative grid size-44 place-items-center"
+        >
+          <span
+            className={`reactor ${mode === "speaking" || mode === "thinking" ? "reactor-talking" : ""} ${mode === "listening" ? "reactor-listening" : ""}`}
+            aria-hidden
+          >
+            <span className="reactor-ring reactor-ring-1" />
+            <span className="reactor-ring reactor-ring-2" />
+            <span className="reactor-ring reactor-ring-3" />
+            <span ref={coreRef} className="reactor-core" />
+          </span>
+        </button>
+        <p className={`mt-3 h-5 text-xs font-medium tracking-wide ${mode === "listening" ? "text-red-300" : "text-cyan-soft/80"}`}>
+          {mode === "listening" && <span className="mr-1.5 inline-block size-2 animate-pulse rounded-full bg-bad align-middle" />}
+          {needsTap && mode === "idle"
+            ? "Toca la pantalla para escuchar a Jarvis 🔊"
+            : mode === "listening" && tapToSend
+              ? "Te escucho… toca el reactor cuando termines"
+              : STATUS[mode]}
+        </p>
+      </div>
+
+      <div className="mt-4 flex-1 space-y-3 overflow-y-auto px-4 pb-4">
+        <p className="max-w-[90%] text-[17px] leading-relaxed text-text/95">
           {shown}
           {shown.length < text.length && <span className="animate-pulse text-cyan">▍</span>}
         </p>
-      ) : (
-        <div className="w-full max-w-md space-y-2 text-left">
-          {heard && (
-            <p className="ml-auto w-fit max-w-[85%] rounded-3xl rounded-br-md bg-gradient-to-br from-cyan/90 to-azure/90 px-4 py-2 text-[15px] text-ink">
-              {heard}
+        {turns.map((t) =>
+          t.role === "me" ? (
+            <p
+              key={t.id}
+              className="rise ml-auto w-fit max-w-[85%] rounded-3xl rounded-br-md bg-gradient-to-br from-cyan/90 to-azure/90 px-4 py-2 text-[15px] text-ink"
+            >
+              {t.text}
             </p>
-          )}
-          {reply && <p className="w-fit max-w-[90%] rounded-3xl rounded-bl-md border border-line bg-panel-2 px-4 py-2 text-[15px]">{reply}</p>}
-          {actions.map((a, i) => (
-            <Link key={i} href={a.href ?? "#"} className="flex items-start gap-2 rounded-2xl border border-ok/30 bg-ok/10 px-3 py-2 text-sm">
-              <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-ok text-ink">
-                <IconCheck className="size-3" />
-              </span>
-              <span>
-                <span className="block font-semibold text-emerald-200">{a.title}</span>
-                <span className="text-emerald-100/80">{a.detail}</span>
-              </span>
-            </Link>
-          ))}
-        </div>
-      )}
+          ) : (
+            <div key={t.id} className="rise space-y-2">
+              <p className="max-w-[90%] text-[17px] leading-relaxed text-text/95">{t.text}</p>
+              {t.actions?.map((a, i) => (
+                <Link
+                  key={i}
+                  href={a.href ?? "#"}
+                  className="flex w-fit max-w-[90%] items-start gap-2 rounded-2xl border border-ok/30 bg-ok/10 px-3 py-2 text-sm"
+                >
+                  <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-ok text-ink">
+                    <IconCheck className="size-3" />
+                  </span>
+                  <span>
+                    <span className="block font-semibold text-emerald-200">{a.title}</span>
+                    <span className="text-emerald-100/80">{a.detail}</span>
+                  </span>
+                </Link>
+              ))}
+            </div>
+          ),
+        )}
+        <div ref={endRef} />
+      </div>
 
-      <div className="mt-4 flex gap-2">
-        {mode !== "idle" && (
-          <button
-            className="btn btn-ghost px-5"
-            onClick={() => {
-              recRef.current?.cancel();
-              stopSpeaking();
-              endConversation();
+      <div className="flex shrink-0 items-center justify-center gap-3 px-4 pb-3">
+        {typing ? (
+          <form
+            className="flex w-full items-center gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              sendTyped();
             }}
           >
-            Terminar
-          </button>
+            <input
+              autoFocus
+              className="field"
+              placeholder="Escríbele a Jarvis…"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              enterKeyHint="send"
+              maxLength={2000}
+            />
+            <button type="submit" className="btn btn-primary size-11 shrink-0 rounded-full p-0" aria-label="Enviar" disabled={!draft.trim()}>
+              ➤
+            </button>
+          </form>
+        ) : (
+          <>
+            {mode !== "idle" && (
+              <button
+                className="btn btn-ghost px-5 text-sm"
+                onClick={() => {
+                  recRef.current?.cancel();
+                  stopSpeaking();
+                  endConversation();
+                }}
+              >
+                Terminar
+              </button>
+            )}
+            {mode === "idle" && (
+              <button
+                className="grid size-11 place-items-center rounded-full bg-white/5 text-muted"
+                aria-label="Escribir"
+                onClick={() => setTyping(true)}
+              >
+                ⌨︎
+              </button>
+            )}
+          </>
         )}
-        <Link href="/jarvis" className="btn btn-ghost px-5">
-          Abrir chat
-        </Link>
       </div>
-    </section>
+    </main>
   );
 }
