@@ -8,7 +8,7 @@ export const maxDuration = 60;
 
 export const GET = api(async (_req, { user }) => {
   const rows = await query(
-    "select id, role, content, actions, created_at from jarvis.chat_messages where user_id = $1 order by created_at desc limit 60",
+    "select id, role, content, actions, created_at from jarvis.chat_messages where user_id = $1 order by created_at desc, (role = 'assistant') desc limit 60",
     [user.id],
   );
   return { ok: true, configured: aiConfigured(), messages: rows.reverse() };

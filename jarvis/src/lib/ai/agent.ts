@@ -68,7 +68,7 @@ function contextBlock(tz: string, name: string) {
 /** Historial breve para que Jarvis entienda "esta tarea" o "esa idea". */
 async function loadHistory(userId: string): Promise<Anthropic.Beta.BetaMessageParam[]> {
   const rows = await query<{ role: "user" | "assistant"; content: string; actions: ActionCard[] }>(
-    "select role, content, actions from jarvis.chat_messages where user_id = $1 order by created_at desc limit $2",
+    "select role, content, actions from jarvis.chat_messages where user_id = $1 order by created_at desc, (role = 'assistant') desc limit $2",
     [userId, HISTORY_MESSAGES],
   );
   const msgs: Anthropic.Beta.BetaMessageParam[] = [];
