@@ -14,7 +14,7 @@ describe("saludo de Jarvis al abrir", () => {
       doneHabits: 0,
     });
     expect(t).toBe(
-      "Buenos días, Javier. Todos los sistemas en orden. Tienes 2 pendientes hoy. El primero, Llamar a mamá, a las 10 de la mañana. Hay un asunto atrasado; cuando gustes lo reprogramamos. Hábitos por hacer: leer y hacer ejercicio. ¿Qué necesitas?",
+      "Buenos días, Javier. Sistemas en línea, agenda cargada y listo para despegar. Tengo 2 pendientes en el radar. El primero, Llamar a mamá, a las 10 de la mañana. Hay un asunto atrasado esperándote con paciencia; cuando quieras lo reprogramamos. Y no lo olvido: leer y hacer ejercicio te esperan. ¿Qué necesitas?",
     );
   });
 
@@ -28,8 +28,8 @@ describe("saludo de Jarvis al abrir", () => {
       doneHabits: 2,
     });
     expect(t).toMatch(/^Buenas noches, Javier\./);
-    expect(t).toContain("Tu agenda de hoy está despejada.");
-    expect(t).toContain("Hábitos de hoy cumplidos. Impecable.");
+    expect(t).toContain("Agenda despejada. Un lujo que pocos se permiten.");
+    expect(t).toContain("Hábitos del día completos. Impecable, como siempre.");
   });
 
   it("lee bien las horas de la tarde", () => {

@@ -10,7 +10,7 @@ import { toast } from "./Toast";
 import { loadVoicePrefs, prepare, speak, speechSupported, stopSpeaking, unlockAudio, voicesReady } from "./voice";
 
 const LAST_KEY = "jarvis.lastGreeting";
-const REPEAT_AFTER_MS = 20 * 60_000; // vuelve a saludar si pasaron 20 min desde el último saludo
+const REPEAT_AFTER_MS = 60_000; // saluda cada vez que abres la app (o vuelves tras más de 1 minuto)
 
 type Mode = "idle" | "listening" | "thinking" | "speaking";
 interface Action {
@@ -45,6 +45,7 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
   const recRef = useRef<Recorder | null>(null);
   const coreRef = useRef<HTMLSpanElement>(null);
   const greetedRef = useRef(false);
+  const [greetKey, setGreetKey] = useState(0); // cambia al volver a la app: dispara un saludo nuevo
   const turnsRef = useRef(0); // veces que ya te entendió en esta conversación
   const retriesRef = useRef(0); // intentos seguidos sin entender
 
@@ -101,6 +102,7 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
       document.removeEventListener("click", onTap);
     };
     voicesReady().then(async () => {
+      if (greetKey > 0) await new Promise((res) => setTimeout(res, 900)); // espera el saludo actualizado
       await prepare(textRef.current); // audio listo de antemano: suena al instante al tocar
       if (cancelled || active.current) return;
       const ok = await sayGreeting();
@@ -115,7 +117,24 @@ export function JarvisGreeting({ text, aiReady }: { text: string; aiReady: boole
       cleanup();
       stopSpeaking();
     };
-  }, [sayGreeting]);
+  }, [sayGreeting, greetKey]);
+
+  // Al volver a la app después de un rato: datos frescos y saludo nuevo.
+  useEffect(() => {
+    let hiddenAt = 0;
+    const onVis = () => {
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+        stopSpeaking();
+      } else if (hiddenAt && Date.now() - hiddenAt > REPEAT_AFTER_MS && !active.current) {
+        greetedRef.current = false;
+        router.refresh(); // trae un saludo con tus pendientes actualizados
+        setGreetKey((k) => k + 1);
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [router]);
 
   // El núcleo del reactor late con tu voz mientras te escucha.
   useEffect(() => {
